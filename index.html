@@ -111,6 +111,27 @@
             background: linear-gradient(135deg, #229954, #27ae60);
             transform: scale(1.05);
         }
+        
+        /* Queue indicator styles */
+        .queue-indicator {
+            background: linear-gradient(135deg, #fff5e6, #ffe4b3);
+            padding: 8px 15px;
+            border-radius: 8px;
+            border: 2px solid #f39c12;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .queue-label {
+            font-weight: 600;
+            color: #7f8c8d;
+            font-size: 0.9em;
+        }
+        .queue-next {
+            font-weight: 700;
+            font-size: 1.1em;
+            color: #e74c3c;
+            margin-left: 5px;
+        }
+        
         .modal-overlay {
             display: none;
             position: fixed;
@@ -400,8 +421,8 @@
         }
         
         /* Status color coding */
-        .patient-card.status-discharge { border-left-color: #27ae60; }
-        .patient-card.status-active { border-left-color: #3498db; }
+        .patient-card.status-discharge { border-left-color: #e74c3c; }
+        .patient-card.status-active { border-left-color: #27ae60; }
         .patient-card.status-critical { border-left-color: #e74c3c; }
         .patient-card.status-pending { border-left-color: #f39c12; }
         
@@ -542,9 +563,9 @@
             font-weight: 600;
         }
         .badge-status.discharge {
-            background: linear-gradient(135deg, #11998e 0%, #38ef7d 100%);
+            background: linear-gradient(135deg, #e74c3c 0%, #c0392b 100%);
             color: white;
-            box-shadow: 0 2px 4px rgba(56, 239, 125, 0.3);
+            box-shadow: 0 2px 4px rgba(231, 76, 60, 0.3);
         }
         .badge-status.discharge input,
         .badge-status.discharge select {
@@ -556,9 +577,9 @@
             background: rgba(255, 255, 255, 0.3) !important;
         }
         .badge-status.active {
-            background: linear-gradient(135deg, #3498db 0%, #2980b9 100%);
+            background: linear-gradient(135deg, #27ae60 0%, #229954 100%);
             color: white;
-            box-shadow: 0 2px 4px rgba(52, 152, 219, 0.3);
+            box-shadow: 0 2px 4px rgba(39, 174, 96, 0.3);
         }
         .badge-status.active input,
         .badge-status.active select {
@@ -754,6 +775,7 @@
                     <label>Status</label>
                     <select id="filterStatus" onchange="applyFilters()">
                         <option value="">-- ทั้งหมด --</option>
+                        <option value="active">Active</option>
                         <option value="discharge">Discharge</option>
                     </select>
                 </div>
@@ -770,6 +792,10 @@
                 <button class="btn-apply-filter" onclick="applyFilters()">✓ กรอง</button>
                 <button class="btn-clear-filter" onclick="clearFilters()">✕ ล้างตัวกรอง</button>
                 <button class="btn-add-patient" onclick="openAddPatientModal()">➕ เพิ่มผู้ป่วย</button>
+                <div class="queue-indicator" id="queueIndicator" style="display: inline-block; margin-left: 15px;">
+                    <span class="queue-label">🔄 ลำดับถัดไป:</span>
+                    <span class="queue-next" id="queueNext"></span>
+                </div>
             </div>
             <div class="results-count" id="resultsCount"></div>
         </div>
@@ -787,6 +813,16 @@
             <button class="btn-close-modal" onclick="closeAddPatientModal()">&times;</button>
         </div>
         <div class="modal-body">
+            <div class="queue-status-box" id="queueStatusBox" style="background: linear-gradient(135deg, #e8f4f8, #d4e9f7); padding: 15px; border-radius: 8px; margin-bottom: 20px; border-left: 4px solid #3498db;">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+                    <div>
+                        <strong style="color: #2c3e50; font-size: 1.1em;">🔄 ลำดับถัดไป:</strong>
+                        <span id="modalQueueNext" style="font-size: 1.2em; font-weight: 700; color: #e74c3c; margin-left: 10px;"></span>
+                    </div>
+                    <button class="btn btn-sm btn-warning" onclick="skipQueue()" style="padding: 6px 12px;">⏭️ ข้าม</button>
+                </div>
+                <div id="skippedSlots" style="margin-top: 10px; font-size: 0.9em; color: #7f8c8d;"></div>
+            </div>
             <div class="modal-field">
                 <label>คนรับเคส</label>
                 <select id="newStaff">
@@ -1016,6 +1052,243 @@
         localStorage.setItem('staff_colors', JSON.stringify(staffColors));
     }
     
+    // ===== QUEUE MANAGEMENT SYSTEM =====
+    const STAFF_QUEUE = ['นัท', 'เอิง', 'อาย'];
+    
+    // Calculate next in queue based on last row in sheet
+    function getNextInQueue() {
+        if (!currentSheet || !allData[currentSheet]) {
+            return STAFF_QUEUE[0]; // Default to first person
+        }
+        
+        const sheetData = allData[currentSheet];
+        const headers = sheetData[0] || [];
+        
+        // Find staff column index
+        let staffColIdx = -1;
+        let bedColIdx = -1;
+        let nameColIdx = -1;
+        
+        headers.forEach((header, colIdx) => {
+            const headerLower = String(header).toLowerCase();
+            if (headerLower.includes('คนรับ')) staffColIdx = colIdx;
+            else if (headerLower.includes('เตียง') || headerLower.includes('bed')) bedColIdx = colIdx;
+            else if (headerLower.includes('ชื่อ') || headerLower.includes('name')) nameColIdx = colIdx;
+        });
+        
+        if (staffColIdx === -1) return STAFF_QUEUE[0];
+        
+        // Find last row with actual patient data (not just placeholder)
+        let lastStaff = null;
+        const rowKeys = Object.keys(sheetData)
+            .map(k => parseInt(k))
+            .filter(n => !isNaN(n) && n > 0) // Skip header row
+            .sort((a, b) => a - b);
+        
+        // Search from last row backwards for a row with actual patient data
+        for (let i = rowKeys.length - 1; i >= 0; i--) {
+            const rowIdx = rowKeys[i];
+            const row = sheetData[rowIdx];
+            if (row && Array.isArray(row)) {
+                const staff = String(row[staffColIdx] || '').trim();
+                const bed = bedColIdx >= 0 ? String(row[bedColIdx] || '').trim() : '';
+                const name = nameColIdx >= 0 ? String(row[nameColIdx] || '').trim() : '';
+                
+                // Found a row with staff and at least bed or name (not a placeholder)
+                if (staff && (bed || name)) {
+                    lastStaff = staff;
+                    break;
+                }
+            }
+        }
+        
+        // If no data found, start from beginning
+        if (!lastStaff) return STAFF_QUEUE[0];
+        
+        // Calculate next in rotation
+        const currentIndex = STAFF_QUEUE.indexOf(lastStaff);
+        if (currentIndex === -1) return STAFF_QUEUE[0]; // Staff not in queue, start from beginning
+        
+        // Return next person in rotation
+        return STAFF_QUEUE[(currentIndex + 1) % STAFF_QUEUE.length];
+    }
+    
+    // Calculate skipped slots from placeholder rows in sheet
+    function getSkippedSlots() {
+        if (!currentSheet || !allData[currentSheet]) {
+            return [];
+        }
+        
+        const sheetData = allData[currentSheet];
+        const headers = sheetData[0] || [];
+        
+        // Find column indices
+        let staffColIdx = -1;
+        let bedColIdx = -1;
+        let nameColIdx = -1;
+        
+        headers.forEach((header, colIdx) => {
+            const headerLower = String(header).toLowerCase();
+            if (headerLower.includes('คนรับ')) staffColIdx = colIdx;
+            else if (headerLower.includes('เตียง') || headerLower.includes('bed')) bedColIdx = colIdx;
+            else if (headerLower.includes('ชื่อ') || headerLower.includes('name')) nameColIdx = colIdx;
+        });
+        
+        if (staffColIdx === -1) return [];
+        
+        // Find all placeholder rows (staff filled, but no bed/name)
+        const skipped = [];
+        const rowKeys = Object.keys(sheetData)
+            .map(k => parseInt(k))
+            .filter(n => !isNaN(n) && n > 0)
+            .sort((a, b) => a - b);
+        
+        for (const rowIdx of rowKeys) {
+            const row = sheetData[rowIdx];
+            if (row && Array.isArray(row)) {
+                const staff = String(row[staffColIdx] || '').trim();
+                const bed = bedColIdx >= 0 ? String(row[bedColIdx] || '').trim() : '';
+                const name = nameColIdx >= 0 ? String(row[nameColIdx] || '').trim() : '';
+                
+                // Placeholder: has staff but no bed AND no name
+                if (staff && !bed && !name && !skipped.includes(staff)) {
+                    skipped.push(staff);
+                }
+            }
+        }
+        
+        return skipped;
+    }
+    
+    async function skipQueue() {
+        const currentStaff = getNextInQueue();
+        const skippedSlots = getSkippedSlots();
+        
+        // Add to skipped slots if not already there
+        if (!skippedSlots.includes(currentStaff)) {
+            
+            // Create placeholder row in sheet
+            if (currentSheet && allData[currentSheet]) {
+                try {
+                    const sheetData = allData[currentSheet];
+                    
+                    // Find last continuous row
+                    const rowKeys = Object.keys(sheetData).map(k => parseInt(k)).filter(n => !isNaN(n)).sort((a, b) => a - b);
+                    let lastContinuousRow = 0;
+                    for (let i = 0; i < rowKeys.length; i++) {
+                        if (rowKeys[i] === i) {
+                            lastContinuousRow = i;
+                        } else {
+                            break;
+                        }
+                    }
+                    const newRowIndex = lastContinuousRow + 1;
+                    
+                    // Get headers and create placeholder row
+                    const headers = sheetData[0] || [];
+                    const placeholderRow = new Array(headers.length).fill('');
+                    
+                    // Fill in only the staff name
+                    headers.forEach((header, colIdx) => {
+                        const headerLower = String(header).toLowerCase();
+                        if (headerLower.includes('คนรับ')) {
+                            placeholderRow[colIdx] = currentStaff;
+                        }
+                    });
+                    
+                    // Add to Firebase
+                    await set(ref(db, `sheets/${currentSheet}/${newRowIndex}`), placeholderRow);
+                    console.log('✅ Placeholder row created for:', currentStaff);
+                    
+                    // Sync to Google Sheets
+                    fetch(SCRIPT_URL, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+                        redirect: 'follow',
+                        body: JSON.stringify({
+                            action: 'addRow',
+                            sheetName: currentSheet,
+                            rowIndex: newRowIndex,
+                            rowData: placeholderRow
+                        })
+                    }).catch(error => console.error('Error syncing placeholder:', error));
+                    
+                } catch (error) {
+                    console.error('Error creating placeholder:', error);
+                }
+            }
+        }
+        
+        // Update display (queue will auto-calculate from new data)
+        updateQueueDisplay();
+    }
+    
+    function fillSkippedSlot(staffName) {
+        // Open the add patient modal with this staff pre-selected
+        document.getElementById('newStaff').value = staffName;
+        
+        // Set today's date as default
+        const today = new Date().toISOString().split('T')[0];
+        document.getElementById('newAdmit').value = today;
+        
+        // Update queue display in modal
+        updateQueueDisplay();
+        
+        // Show modal
+        document.getElementById('addPatientModal').classList.add('show');
+    }
+    
+    function updateQueueDisplay() {
+        const nextStaff = getNextInQueue();
+        const color = getStaffColor(nextStaff);
+        
+        // Update main queue indicator
+        const queueNextEl = document.getElementById('queueNext');
+        if (queueNextEl) {
+            queueNextEl.textContent = nextStaff;
+            queueNextEl.style.background = color;
+            queueNextEl.style.padding = '4px 12px';
+            queueNextEl.style.borderRadius = '6px';
+            queueNextEl.style.color = 'white';
+            queueNextEl.style.textShadow = '0 1px 2px rgba(0,0,0,0.3)';
+        }
+        
+        // Update modal queue indicator
+        const modalQueueNext = document.getElementById('modalQueueNext');
+        if (modalQueueNext) {
+            modalQueueNext.textContent = nextStaff;
+            modalQueueNext.style.background = color;
+            modalQueueNext.style.padding = '4px 12px';
+            modalQueueNext.style.borderRadius = '6px';
+            modalQueueNext.style.color = 'white';
+            modalQueueNext.style.textShadow = '0 1px 2px rgba(0,0,0,0.3)';
+        }
+        
+        // Update skipped slots display (calculated from sheet data)
+        const skippedSlots = getSkippedSlots();
+        const skippedSlotsEl = document.getElementById('skippedSlots');
+        if (skippedSlotsEl) {
+            if (skippedSlots.length > 0) {
+                const slotsHtml = skippedSlots.map(staff => {
+                    const staffColor = getStaffColor(staff);
+                    return `<button class="btn btn-sm" 
+                        onclick="fillSkippedSlot('${staff}')" 
+                        style="background: ${staffColor}; color: white; margin-right: 5px; padding: 4px 10px; border: none; border-radius: 4px; cursor: pointer; margin-top: 5px;">
+                        ${staff} (\u0e40\u0e27\u0e49\u0e19\u0e44\u0e27\u0e49)
+                    </button>`;
+                }).join('');
+                skippedSlotsEl.innerHTML = `<strong>\ud83d\udccc \u0e2a\u0e25\u0e47\u0e2d\u0e15\u0e17\u0e35\u0e48\u0e40\u0e27\u0e49\u0e19\u0e44\u0e27\u0e49:</strong><br>${slotsHtml}`;
+                skippedSlotsEl.style.display = 'block';
+            } else {
+                skippedSlotsEl.style.display = 'none';
+            }
+        }
+    }
+    
+    window.skipQueue = skipQueue;
+    window.fillSkippedSlot = fillSkippedSlot;
+    // ===== END QUEUE MANAGEMENT =====
+    
     // --- LOGIN LOGIC ---
     const overlay = document.getElementById('loginOverlay');
     const nameInput = document.getElementById('guestName');
@@ -1082,6 +1355,9 @@
         document.getElementById('btnCardView').classList.toggle('active', currentView === 'card');
         document.querySelector('.table-responsive').style.display = currentView === 'table' ? 'block' : 'none';
         document.getElementById('cardView').classList.toggle('active', currentView === 'card');
+        
+        // Initialize queue display
+        updateQueueDisplay();
         
         // 1. Fetch ALL sheets
         // FIX: Added an error handler. If Firebase blocks you, it will tell you!
@@ -1267,7 +1543,7 @@ onValue(ref(db, 'sheets'), (snapshot) => {
             return html;
         } else {
             // Create regular input or date input
-            const sizeAttr = inputType === 'date' ? '' : `size="${Math.max(3, String(value || '').length + 2)}"`;
+            const sizeAttr = inputType === 'date' ? '' : `size="${Math.max(6, String(value || '').length + 6)}"`;
             return `<input 
                 type="${inputType}"
                 id="${idPrefix}-${r}-${c}" 
@@ -1769,7 +2045,18 @@ function renderCards(sheetName, forceFullRender = false) {
             // Apply status filter
             if (filterStatus && passesFilter) {
                 const val = colMap.status !== undefined ? String(row[colMap.status] || '').toLowerCase().trim() : '';
-                if (!val.includes(filterStatus.toLowerCase())) passesFilter = false;
+                // Handle both "discharge" and "d/c" formats
+                if (filterStatus.toLowerCase() === 'discharge') {
+                    const isDischarge = val.includes('discharge') || val.includes('d/c') || val === 'd/c';
+                    if (!isDischarge) passesFilter = false;
+                } else if (filterStatus.toLowerCase() === 'active') {
+                    // Active means NOT discharge
+                    const isDischarge = val.includes('discharge') || val.includes('d/c') || val === 'd/c';
+                    const isActive = val.includes('active') || val === 'active' || (!val) || !isDischarge;
+                    if (isDischarge) passesFilter = false; // Exclude discharge from active
+                } else if (!val.includes(filterStatus.toLowerCase())) {
+                    passesFilter = false;
+                }
             }
             
             // If row passes all filters, add it
@@ -1781,23 +2068,44 @@ function renderCards(sheetName, forceFullRender = false) {
         // Apply sorting
         if (sortBy && colMap.bed !== undefined) {
             filteredRows.sort((a, b) => {
-                const aVal = a.row[colMap.bed] || '';
-                const bVal = b.row[colMap.bed] || '';
+                const aVal = String(a.row[colMap.bed] || '').trim();
+                const bVal = String(b.row[colMap.bed] || '').trim();
                 
-                // Try to parse as numbers
-                const aNum = parseFloat(aVal);
-                const bNum = parseFloat(bVal);
+                // Helper function to extract the highest number from strings like "6->18" or "6"
+                const extractSortNumber = (str) => {
+                    // Find all numbers in the string
+                    const numbers = str.match(/\d+/g);
+                    if (!numbers || numbers.length === 0) return NaN;
+                    
+                    // If there's an arrow (->), use the number after it (destination bed)
+                    if (str.includes('->') && numbers.length >= 2) {
+                        return parseFloat(numbers[numbers.length - 1]);
+                    }
+                    
+                    // Otherwise use the highest number found
+                    return Math.max(...numbers.map(n => parseFloat(n)));
+                };
                 
-                // Handle non-numeric values
-                if (isNaN(aNum) && isNaN(bNum)) return 0;
+                const aNum = extractSortNumber(aVal);
+                const bNum = extractSortNumber(bVal);
+                
+                // If both are valid numbers, compare numerically
+                if (!isNaN(aNum) && !isNaN(bNum)) {
+                    if (sortBy === 'bed-asc') {
+                        return aNum - bNum;
+                    } else if (sortBy === 'bed-desc') {
+                        return bNum - aNum;
+                    }
+                }
+                
+                // Handle non-numeric values - sort them alphabetically
+                if (isNaN(aNum) && isNaN(bNum)) {
+                    return sortBy === 'bed-asc' ? aVal.localeCompare(bVal) : bVal.localeCompare(aVal);
+                }
+                
+                // Numbers come before non-numbers
                 if (isNaN(aNum)) return 1;
                 if (isNaN(bNum)) return -1;
-                
-                if (sortBy === 'bed-asc') {
-                    return aNum - bNum;
-                } else if (sortBy === 'bed-desc') {
-                    return bNum - aNum;
-                }
                 return 0;
             });
         }
@@ -1899,6 +2207,13 @@ function renderCards(sheetName, forceFullRender = false) {
         const today = new Date().toISOString().split('T')[0];
         document.getElementById('newAdmit').value = today;
         
+        // Update queue display
+        updateQueueDisplay();
+        
+        // Auto-select next in queue
+        const nextStaff = getNextInQueue();
+        document.getElementById('newStaff').value = nextStaff;
+        
         // Show modal
         document.getElementById('addPatientModal').classList.add('show');
     };
@@ -1958,32 +2273,72 @@ function renderCards(sheetName, forceFullRender = false) {
             return;
         }
 
-        // Find last CONTINUOUSLY numbered row (ignoring gaps)
-        // This ensures new patients are added right after the main data block
-        const rowKeys = Object.keys(sheetData).map(k => parseInt(k)).filter(n => !isNaN(n)).sort((a, b) => a - b);
+        // Get headers to map field names to column indices
+        const headers = sheetData[0] || [];
+        let staffColIdx = -1;
+        let bedColIdx = -1;
+        let nameColIdx = -1;
         
-        console.log('Row keys in Firebase:', rowKeys);
+        headers.forEach((header, colIdx) => {
+            const headerLower = String(header).toLowerCase();
+            if (headerLower.includes('คนรับ')) staffColIdx = colIdx;
+            else if (headerLower.includes('เตียง') || headerLower.includes('bed')) bedColIdx = colIdx;
+            else if (headerLower.includes('ชื่อ') || headerLower.includes('name')) nameColIdx = colIdx;
+        });
         
-        let lastContinuousRow = 0; // Start with header row
-        
-        // Find the last row in a continuous sequence starting from 0
-        for (let i = 0; i < rowKeys.length; i++) {
-            if (rowKeys[i] === i) {
-                // This row is part of the continuous sequence
-                lastContinuousRow = i;
-            } else {
-                // Found a gap - stop here
-                console.log('Gap found at index', i, ', expected row', i, 'but found', rowKeys[i]);
-                break;
+        // Check if this staff has a placeholder row (staff name filled, but bed/name empty)
+        let placeholderRowIndex = null;
+        const skippedSlots = getSkippedSlots();
+        if (skippedSlots.includes(staff)) {
+            // Search for placeholder row
+            for (let rowIdx = 1; rowIdx <= Object.keys(sheetData).length; rowIdx++) {
+                const row = sheetData[rowIdx];
+                if (row && Array.isArray(row)) {
+                    const rowStaff = staffColIdx >= 0 ? String(row[staffColIdx] || '').trim() : '';
+                    const rowBed = bedColIdx >= 0 ? String(row[bedColIdx] || '').trim() : '';
+                    const rowName = nameColIdx >= 0 ? String(row[nameColIdx] || '').trim() : '';
+                    
+                    // Placeholder: has staff name but no bed or patient name
+                    if (rowStaff === staff && !rowBed && !rowName) {
+                        placeholderRowIndex = rowIdx;
+                        console.log('✅ Found placeholder row for', staff, 'at row', rowIdx);
+                        break;
+                    }
+                }
             }
         }
         
-        const newRowIndex = lastContinuousRow + 1;
-        console.log('Last continuous row:', lastContinuousRow);
-        console.log('Will add new patient at row:', newRowIndex);
+        let newRowIndex;
+        if (placeholderRowIndex !== null) {
+            // Update existing placeholder row
+            newRowIndex = placeholderRowIndex;
+            console.log('Updating placeholder row:', newRowIndex);
+        } else {
+            // Find last CONTINUOUSLY numbered row (ignoring gaps)
+            const rowKeys = Object.keys(sheetData).map(k => parseInt(k)).filter(n => !isNaN(n)).sort((a, b) => a - b);
+            
+            console.log('Row keys in Firebase:', rowKeys);
+            
+            let lastContinuousRow = 0; // Start with header row
+            
+            // Find the last row in a continuous sequence starting from 0
+            for (let i = 0; i < rowKeys.length; i++) {
+                if (rowKeys[i] === i) {
+                    // This row is part of the continuous sequence
+                    lastContinuousRow = i;
+                } else {
+                    // Found a gap - stop here
+                    console.log('Gap found at index', i, ', expected row', i, 'but found', rowKeys[i]);
+                    break;
+                }
+            }
+            
+            newRowIndex = lastContinuousRow + 1;
+            console.log('Last continuous row:', lastContinuousRow);
+            console.log('Will add new patient at row:', newRowIndex);
+        }
 
-        // Get headers to map field names to column indices
-        const headers = sheetData[0] || [];
+        // Create new row data array based on headers
         const newRowData = new Array(headers.length).fill('');
 
         // Map form values to columns based on header names
@@ -2010,6 +2365,10 @@ function renderCards(sheetName, forceFullRender = false) {
             await set(ref(db, `sheets/${currentSheet}/${newRowIndex}`), newRowData);
             
             console.log('✅ Patient added to Firebase');
+            
+            // Queue will auto-calculate from new data, just update display
+            updateQueueDisplay();
+            
             closeAddPatientModal();
             
             // Refresh card view immediately
@@ -2149,12 +2508,17 @@ function renderCards(sheetName, forceFullRender = false) {
 window.autoResizeInput = (input) => {
     if (input.type === 'date') return; // Don't resize date inputs
     
-    const minSize = 3;
+    const minSize = 6;
     const maxSize = 50;
     const contentLength = input.value.length || 1;
-    const newSize = Math.min(maxSize, Math.max(minSize, contentLength + 2));
+    // Add generous buffer of 6 chars to prevent cutoff when typing
+    const newSize = Math.min(maxSize, Math.max(minSize, contentLength + 6));
     
     input.setAttribute('size', newSize);
+    
+    // Also set inline width for extra safety
+    const charWidth = 8; // approximate pixels per character
+    input.style.minWidth = `${newSize * charWidth}px`;
 };
 
 window.updateData = (r, c, val) => {
