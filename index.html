@@ -176,8 +176,10 @@
             border-radius: 5px;
             font-size: 0.95em;
             background: white;
-            min-width: 60px;
             transition: all 0.2s;
+            width: auto;
+            min-width: 40px;
+            max-width: 100%;
         }
         .card-inline-field input:focus,
         .card-inline-field select:focus {
@@ -193,11 +195,12 @@
             box-shadow: 0 0 0 3px rgba(231, 76, 60, 0.1);
         }
         .card-inline-field.wide input {
-            min-width: 140px;
+            min-width: 80px;
         }
         .card-inline-field.narrow input {
-            min-width: 50px;
-            max-width: 70px;
+            min-width: 35px;
+            max-width: 60px;
+            text-align: center;
         }
         
         /* Badge styles for staff and status */
@@ -308,10 +311,21 @@
             text-align: center;
             background: #fff5f5 !important;
             border: 2px solid #e74c3c !important;
+            cursor: pointer;
+            padding: 4px 8px !important;
+        }
+        .bed-number input:hover {
+            background: #ffe6e6 !important;
+            border-color: #c0392b !important;
         }
         .bed-number input:focus {
             background: white !important;
             box-shadow: 0 0 0 3px rgba(231, 76, 60, 0.2) !important;
+            border-color: #c0392b !important;
+        }
+        .bed-number input::placeholder {
+            color: #e74c3c;
+            opacity: 0.5;
         }
         .diagnosis-tag {
             flex-shrink: 0;
@@ -326,11 +340,13 @@
         }
         .card-inline-field.diagnosis-field {
             flex: 1;
-            min-width: 200px;
+            min-width: 150px;
+            max-width: 100%;
         }
         .card-inline-field.diagnosis-field input {
             width: 100%;
-            min-width: 200px;
+            min-width: 150px;
+            max-width: 100%;
         }
         .info-label {
             color: #7f8c8d;
@@ -742,13 +758,16 @@ onValue(ref(db, 'sheets'), (snapshot) => {
             return html;
         } else {
             // Create regular input or date input
+            const sizeAttr = inputType === 'date' ? '' : `size="${Math.max(3, String(value || '').length + 2)}"`;
             return `<input 
                 type="${inputType}"
                 id="${idPrefix}-${r}-${c}" 
                 class="cell-input" 
                 value="${safeValue}" 
+                ${sizeAttr}
                 onfocus="setFocus(${r}, ${c})" 
                 onblur="removeFocus(${r}, ${c})"
+                oninput="autoResizeInput(this)"
                 onchange="updateData(${r}, ${c}, this.value)">`;
         }
     }
@@ -1053,6 +1072,13 @@ function renderCards(sheetName, forceFullRender = false) {
 
             cardContainer.innerHTML = html || '<p class="text-center text-muted p-5">ไม่มีข้อมูลที่จะแสดง</p>';
             
+            // Initialize input sizes based on content
+            setTimeout(() => {
+                cardContainer.querySelectorAll('input[type="text"]').forEach(input => {
+                    autoResizeInput(input);
+                });
+            }, 0);
+            
             // Update results count
             const totalCount = data.filter((row, idx) => {
                 if (idx === 0) return false;
@@ -1238,6 +1264,18 @@ function renderCards(sheetName, forceFullRender = false) {
 
 // PASTE YOUR WEB APP URL HERE
 const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbztdQvnznmaYhNswYpVvXsFBXEcjR8UiQSGxVGYu9DhHaiZ1zSHUze9zJICiLd93hUHPA/exec";
+
+// Auto-resize input fields based on content
+window.autoResizeInput = (input) => {
+    if (input.type === 'date') return; // Don't resize date inputs
+    
+    const minSize = 3;
+    const maxSize = 50;
+    const contentLength = input.value.length || 1;
+    const newSize = Math.min(maxSize, Math.max(minSize, contentLength + 2));
+    
+    input.setAttribute('size', newSize);
+};
 
 window.updateData = (r, c, val) => {
     // 1. Update Firebase
