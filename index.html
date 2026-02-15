@@ -1,0 +1,1347 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>🏥 Ward Live Dashboard</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        body { font-family: 'Sarabun', sans-serif; background: #f4f6f9; }
+        .table-responsive { max-height: 85vh; overflow: auto; position: relative; background: white; }
+        thead th { position: sticky; top: 0; background: #2c3e50; color: white; z-index: 10; white-space: nowrap; border: 1px solid #dee2e6; }
+        
+        /* Cell Styling - Show borders on all cells */
+        table { border-collapse: collapse; }
+        td { border: 1px solid #dee2e6; padding: 0; height: 35px; min-width: 120px; }
+        input.cell-input, select.cell-input { 
+            width: 100%; 
+            height: 100%; 
+            border: none; 
+            background: transparent; 
+            padding: 5px; 
+            min-width: 120px; 
+            box-sizing: border-box; 
+        }
+        input.cell-input:focus, select.cell-input:focus { outline: 2px solid #3498db; background: #fff; }
+        
+        /* Live Presence Indicators */
+        .being-edited { border: 2px solid #e74c3c !important; background-color: #fadbd8 !important; }
+        
+        /* Tab Styling */
+        .nav-tabs .nav-link { cursor: pointer; color: #495057; }
+        .nav-tabs .nav-link.active { font-weight: bold; color: #0d6efd; }
+        
+        /* Card View Styling */
+        .card-view { display: none; padding: 20px; max-height: 85vh; overflow-y: auto; }
+        .card-view.active { display: block; }
+        
+        /* Filter Controls */
+        .filter-controls {
+            background: white;
+            padding: 20px;
+            margin-bottom: 20px;
+            border-radius: 12px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        }
+        .filter-controls h6 {
+            margin: 0 0 15px 0;
+            color: #2c3e50;
+            font-weight: bold;
+        }
+        .filter-row {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+            margin-bottom: 15px;
+        }
+        .filter-group {
+            display: flex;
+            flex-direction: column;
+        }
+        .filter-group label {
+            font-size: 0.85em;
+            font-weight: 600;
+            color: #555;
+            margin-bottom: 5px;
+        }
+        .filter-group select, .filter-group input {
+            padding: 8px 12px;
+            border: 2px solid #e0e0e0;
+            border-radius: 6px;
+            font-size: 0.95em;
+        }
+        .filter-actions {
+            display: flex;
+            gap: 10px;
+            margin-top: 10px;
+        }
+        .filter-actions button {
+            padding: 8px 16px;
+            border: none;
+            border-radius: 6px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+        .btn-apply-filter {
+            background: #3498db;
+            color: white;
+        }
+        .btn-apply-filter:hover {
+            background: #2980b9;
+        }
+        .btn-clear-filter {
+            background: #95a5a6;
+            color: white;
+        }
+        .btn-clear-filter:hover {
+            background: #7f8c8d;
+        }
+        .results-count {
+            font-size: 0.9em;
+            color: #7f8c8d;
+            margin-top: 10px;
+        }
+        .patient-card { 
+            background: linear-gradient(135deg, #ffffff 0%, #f8f9fa 100%);
+            border-radius: 10px; 
+            box-shadow: 0 2px 6px rgba(0,0,0,0.08); 
+            padding: 14px 18px; 
+            margin-bottom: 14px;
+            border-left: 5px solid #3498db;
+            font-size: 0.95em;
+            line-height: 1.7;
+            position: relative;
+            transition: all 0.2s ease;
+        }
+        .patient-card:hover { 
+            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+            transform: translateY(-2px);
+        }
+        
+        /* Status color coding */
+        .patient-card.status-discharge { border-left-color: #27ae60; }
+        .patient-card.status-active { border-left-color: #3498db; }
+        .patient-card.status-critical { border-left-color: #e74c3c; }
+        .patient-card.status-pending { border-left-color: #f39c12; }
+        
+        .card-compact-line {
+            margin-bottom: 6px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            flex-wrap: wrap;
+        }
+        .card-compact-line.first-line {
+            font-weight: bold;
+            font-size: 1.1em;
+            margin-bottom: 8px;
+            padding-bottom: 8px;
+            border-bottom: 2px solid #e9ecef;
+        }
+        .card-compact-line.location-line {
+            background: rgba(52, 152, 219, 0.08);
+            padding: 6px 10px;
+            border-radius: 6px;
+            margin: 0 -4px 8px -4px;
+        }
+        .card-compact-line.diagnosis-line {
+            color: #2c3e50;
+            padding-left: 8px;
+            background: rgba(231, 76, 60, 0.05);
+            margin-left: -4px;
+            margin-right: -4px;
+            padding: 6px 12px;
+            border-radius: 4px;
+            display: flex;
+            align-items: flex-start;
+            gap: 8px;
+        }
+        .card-compact-line.admit-line {
+            color: #7f8c8d;
+            font-size: 0.88em;
+            margin-top: 6px;
+            padding-top: 6px;
+            border-top: 1px solid #ecf0f1;
+        }
+        
+        .card-inline-field {
+            display: inline-block;
+        }
+        .card-inline-field input,
+        .card-inline-field select {
+            display: inline-block;
+            border: 1px solid #ddd;
+            padding: 3px 8px;
+            border-radius: 5px;
+            font-size: 0.95em;
+            background: white;
+            min-width: 60px;
+            transition: all 0.2s;
+        }
+        .card-inline-field input:focus,
+        .card-inline-field select:focus {
+            outline: none;
+            border-color: #3498db;
+            background: #e3f2fd;
+            box-shadow: 0 0 0 3px rgba(52, 152, 219, 0.1);
+        }
+        .card-inline-field input.being-edited,
+        .card-inline-field select.being-edited { 
+            border-color: #e74c3c; 
+            background-color: #fff5f5;
+            box-shadow: 0 0 0 3px rgba(231, 76, 60, 0.1);
+        }
+        .card-inline-field.wide input {
+            min-width: 140px;
+        }
+        .card-inline-field.narrow input {
+            min-width: 50px;
+            max-width: 70px;
+        }
+        
+        /* Badge styles for staff and status */
+        .badge-staff {
+            color: white;
+            padding: 5px 14px;
+            border-radius: 20px;
+            font-weight: 700;
+            display: inline-block;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+            font-size: 1em;
+        }
+        .badge-staff input,
+        .badge-staff select {
+            color: white !important;
+            background: rgba(255, 255, 255, 0.2) !important;
+            border: 1px solid rgba(255, 255, 255, 0.3) !important;
+            font-weight: 700 !important;
+        }
+        .badge-staff input:focus,
+        .badge-staff select:focus {
+            background: rgba(255, 255, 255, 0.3) !important;
+            border-color: rgba(255, 255, 255, 0.5) !important;
+        }
+        .badge-staff input::placeholder {
+            color: rgba(255, 255, 255, 0.7);
+        }
+        .badge-status {
+            padding: 5px 14px;
+            border-radius: 20px;
+            font-weight: 600;
+            display: inline-block;
+            font-size: 1em;
+        }
+        .badge-status input,
+        .badge-status select {
+            font-weight: 600 !important;
+        }
+        .badge-status.discharge {
+            background: linear-gradient(135deg, #11998e 0%, #38ef7d 100%);
+            color: white;
+            box-shadow: 0 2px 4px rgba(56, 239, 125, 0.3);
+        }
+        .badge-status.discharge input,
+        .badge-status.discharge select {
+            color: white !important;
+            background: rgba(255, 255, 255, 0.2) !important;
+            border: 1px solid rgba(255, 255, 255, 0.3) !important;
+        }
+        .badge-status.discharge input:focus {
+            background: rgba(255, 255, 255, 0.3) !important;
+        }
+        .badge-status.active {
+            background: linear-gradient(135deg, #3498db 0%, #2980b9 100%);
+            color: white;
+            box-shadow: 0 2px 4px rgba(52, 152, 219, 0.3);
+        }
+        .badge-status.active input,
+        .badge-status.active select {
+            color: white !important;
+            background: rgba(255, 255, 255, 0.2) !important;
+            border: 1px solid rgba(255, 255, 255, 0.3) !important;
+        }
+        .badge-status.active input:focus {
+            background: rgba(255, 255, 255, 0.3) !important;
+        }
+        .badge-status.default {
+            background: #95a5a6;
+            color: white;
+            box-shadow: 0 2px 4px rgba(149, 165, 166, 0.3);
+        }
+        .badge-status.default input,
+        .badge-status.default select {
+            color: white !important;
+            background: rgba(255, 255, 255, 0.2) !important;
+            border: 1px solid rgba(255, 255, 255, 0.3) !important;
+        }
+        .badge-status.default input:focus {
+            background: rgba(255, 255, 255, 0.3) !important;
+        }
+        .location-badge {
+            background: white;
+            padding: 6px 12px;
+            border-radius: 8px;
+            font-weight: 700;
+            color: #2c3e50;
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.15);
+            font-size: 1.05em;
+        }
+        .location-divider {
+            color: #3498db;
+            font-weight: bold;
+            font-size: 1.3em;
+            margin: 0 2px;
+        }
+        .bed-number {
+            color: #e74c3c;
+            font-weight: 900;
+            font-size: 1.2em;
+        }
+        .bed-number input {
+            color: #e74c3c !important;
+            font-weight: 900 !important;
+            font-size: 1.1em !important;
+            text-align: center;
+            background: #fff5f5 !important;
+            border: 2px solid #e74c3c !important;
+        }
+        .bed-number input:focus {
+            background: white !important;
+            box-shadow: 0 0 0 3px rgba(231, 76, 60, 0.2) !important;
+        }
+        .diagnosis-tag {
+            flex-shrink: 0;
+            font-size: 1.2em;
+            margin-right: 6px;
+        }
+        .diagnosis-text {
+            flex: 1;
+            word-wrap: break-word;
+            white-space: normal;
+            line-height: 1.4;
+        }
+        .card-inline-field.diagnosis-field {
+            flex: 1;
+            min-width: 200px;
+        }
+        .card-inline-field.diagnosis-field input {
+            width: 100%;
+            min-width: 200px;
+        }
+        .info-label {
+            color: #7f8c8d;
+            font-size: 0.85em;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        
+        /* Date input styling */
+        input[type="date"] {
+            cursor: pointer;
+        }
+        .view-toggle { 
+            display: flex; 
+            gap: 5px; 
+            background: #e9ecef; 
+            padding: 3px; 
+            border-radius: 6px;
+        }
+        .view-toggle button { 
+            border: none; 
+            background: transparent; 
+            padding: 6px 12px; 
+            cursor: pointer; 
+            border-radius: 4px;
+            font-size: 0.9em;
+        }
+        .view-toggle button.active { background: white; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+        
+        /* Simple Login Overlay */
+        #loginOverlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(255,255,255,0.98); z-index: 9999; display: flex; justify-content: center; align-items: center; }
+    </style>
+</head>
+<body>
+
+<div id="loginOverlay">
+    <div class="card p-4 shadow text-center" style="width:350px;">
+        <h4 class="mb-3">🏥 Ward Dashboard</h4>
+        <p class="text-muted small">Enter your name to start editing</p>
+        
+        <div class="mb-3">
+            <input type="text" id="guestName" class="form-control form-control-lg" placeholder="e.g. Nurse Joy, Dr. Strange">
+        </div>
+        <button class="btn btn-primary w-100 btn-lg" id="btnEnter">Enter Dashboard</button>
+        <p id="loginError" class="text-danger mt-2 small"></p>
+    </div>
+</div>
+
+<div class="container-fluid p-0">
+    <div class="d-flex justify-content-between align-items-center bg-white p-3 shadow-sm border-bottom">
+        <div class="d-flex align-items-center gap-2">
+            <h5 class="m-0 text-primary">🏥 Live Ward</h5>
+            <span class="badge bg-secondary" id="sheetNameDisplay">Loading...</span>
+        </div>
+        <div class="d-flex align-items-center gap-3">
+            <div class="view-toggle">
+                <button id="btnTableView" class="active" onclick="switchView('table')">📊 Table</button>
+                <button id="btnCardView" onclick="switchView('card')">📋 Cards</button>
+            </div>
+            <span class="text-muted small">👤 <span id="userDisplay">Guest</span></span>
+            <button class="btn btn-sm btn-outline-secondary" onclick="changeName()">Change Name</button>
+        </div>
+    </div>
+
+    <ul class="nav nav-tabs px-3 pt-2 bg-white" id="sheetTabs">
+        <li class="nav-item"><a class="nav-link disabled">Connecting...</a></li>
+    </ul>
+
+    <div class="table-responsive">
+        <table class="table table-bordered table-sm mb-0 bg-white">
+            <thead id="tableHead"></thead>
+            <tbody id="tableBody"></tbody>
+        </table>
+    </div>
+
+    <div class="card-view" id="cardView">
+        <div class="filter-controls">
+            <h6>🔍 กรองและเรียงข้อมูล</h6>
+            <div class="filter-row">
+                <div class="filter-group">
+                    <label>วอร์ด</label>
+                    <select id="filterWard">
+                        <option value="">-- ทั้งหมด --</option>
+                    </select>
+                </div>
+                <div class="filter-group">
+                    <label>คนรับเคส</label>
+                    <select id="filterStaff">
+                        <option value="">-- ทั้งหมด --</option>
+                    </select>
+                </div>
+                <div class="filter-group">
+                    <label>Status</label>
+                    <select id="filterStatus">
+                        <option value="">-- ทั้งหมด --</option>
+                        <option value="discharge">Discharge</option>
+                    </select>
+                </div>
+                <div class="filter-group">
+                    <label>เรียงตาม</label>
+                    <select id="sortBy">
+                        <option value="">-- ไม่เรียง --</option>
+                        <option value="bed-asc">เตียง (น้อย → มาก)</option>
+                        <option value="bed-desc">เตียง (มาก → น้อย)</option>
+                    </select>
+                </div>
+            </div>
+            <div class="filter-actions">
+                <button class="btn-apply-filter" onclick="applyFilters()">✓ กรอง</button>
+                <button class="btn-clear-filter" onclick="clearFilters()">✕ ล้างตัวกรอง</button>
+            </div>
+            <div class="results-count" id="resultsCount"></div>
+        </div>
+        <div id="cardContainer">
+            <!-- Cards will be rendered here -->
+        </div>
+    </div>
+</div>
+
+<script type="module">
+    // FIX: Swapped fake version 12.9.0 for a real, stable version 10.12.2
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
+    import { getDatabase, ref, onValue, update, onDisconnect, set } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js";
+
+    // --- CONFIGURATION ---
+    const firebaseConfig = {
+        apiKey: "AIzaSyBg8Ub8RzxsCXGky8ZCpsX_53sjYXqE3gc",
+        authDomain: "wardlive.firebaseapp.com",
+        databaseURL: "https://wardlive-default-rtdb.asia-southeast1.firebasedatabase.app",
+        projectId: "wardlive",
+        storageBucket: "wardlive.firebasestorage.app",
+        messagingSenderId: "998186109076",
+        appId: "1:998186109076:web:3262ddd2de637391f08c81"
+    };
+
+    const app = initializeApp(firebaseConfig);
+    const db = getDatabase(app);
+    
+// Generate a random local UID
+    let myUid = localStorage.getItem("ward_uid");
+    if (!myUid) {
+        myUid = "user_" + Math.random().toString(36).substr(2, 9);
+        localStorage.setItem("ward_uid", myUid);
+    }
+
+    let myName = localStorage.getItem("ward_username") || ""; 
+    
+    // --- NEW: GENERATE A UNIQUE COLOR ---
+    let myColor = localStorage.getItem("ward_color");
+    if (!myColor) {
+        // Generate a random light/pastel hex color (so black text is still readable!)
+        const r = Math.floor(Math.random() * 128) + 127; 
+        const g = Math.floor(Math.random() * 128) + 127;
+        const b = Math.floor(Math.random() * 128) + 127;
+        myColor = "#" + r.toString(16).padStart(2, '0') + g.toString(16).padStart(2, '0') + b.toString(16).padStart(2, '0');
+        localStorage.setItem("ward_color", myColor);
+    }
+    // ------------------------------------
+
+    let allData = {};      
+    let currentSheet = ""; 
+    let currentView = "table"; // Track current view mode
+    let dropdownOptions = {}; // Store dropdown options for cells
+    let unfilteredCardData = []; // Store unfiltered card data for sorting/filtering
+    let cardColumnMap = {}; // Store column mapping for current sheet
+    
+    // Generate consistent color for each staff name
+    function getStaffColor(name) {
+        if (!name) return '#667eea';
+        
+        // Hash function to generate consistent color from name
+        let hash = 0;
+        for (let i = 0; i < name.length; i++) {
+            hash = name.charCodeAt(i) + ((hash << 5) - hash);
+        }
+        
+        // Generate vibrant colors with good contrast
+        const colors = [
+            'linear-gradient(135deg, #667eea 0%, #764ba2 100%)', // Purple
+            'linear-gradient(135deg, #f093fb 0%, #f5576c 100%)', // Pink
+            'linear-gradient(135deg, #4facfe 0%, #00f2fe 100%)', // Cyan
+            'linear-gradient(135deg, #43e97b 0%, #38f9d7 100%)', // Green
+            'linear-gradient(135deg, #fa709a 0%, #fee140 100%)', // Orange
+            'linear-gradient(135deg, #30cfd0 0%, #330867 100%)', // Teal-Purple
+            'linear-gradient(135deg, #a8edea 0%, #fed6e3 100%)', // Light Blue-Pink
+            'linear-gradient(135deg, #ff9a9e 0%, #fecfef 100%)', // Light Red-Pink
+            'linear-gradient(135deg, #ffecd2 0%, #fcb69f 100%)', // Peach
+            'linear-gradient(135deg, #ff6e7f 0%, #bfe9ff 100%)', // Red-Blue
+            'linear-gradient(135deg, #e0c3fc 0%, #8ec5fc 100%)', // Purple-Blue
+            'linear-gradient(135deg, #f8b500 0%, #fceabb 100%)', // Gold
+        ];
+        
+        return colors[Math.abs(hash) % colors.length];
+    }
+    
+    // --- LOGIN LOGIC ---
+    const overlay = document.getElementById('loginOverlay');
+    const nameInput = document.getElementById('guestName');
+    const btnEnter = document.getElementById('btnEnter');
+
+    if (myName) {
+        enterDashboard();
+    } else {
+        overlay.style.display = 'flex';
+    }
+
+    btnEnter.addEventListener('click', () => {
+        const name = nameInput.value.trim();
+        if (!name) return alert("Please enter a name");
+        
+        myName = name;
+        localStorage.setItem("ward_username", name);
+        enterDashboard();
+    });
+
+    nameInput.addEventListener('keypress', (e) => {
+        if (e.key === 'Enter') btnEnter.click();
+    });
+
+    window.changeName = () => {
+        localStorage.removeItem("ward_username");
+        location.reload();
+    };
+
+    // --- APP START ---
+    function enterDashboard() {
+        overlay.style.display = 'none';
+        document.getElementById('userDisplay').innerText = myName;
+        
+        onDisconnect(ref(db, `presence/${myUid}`)).remove();
+        startApp();
+    }
+
+    function startApp() {
+        // 1. Fetch ALL sheets
+        // FIX: Added an error handler. If Firebase blocks you, it will tell you!
+onValue(ref(db, 'sheets'), (snapshot) => {
+    const data = snapshot.val();
+    if(!data) return; // Handle empty data
+    
+    // Check if the sheet I am looking at still exists
+    const sheetExists = data.hasOwnProperty(currentSheet);
+
+    allData = data;
+
+    // If my current sheet was deleted by someone else
+    if (currentSheet !== "" && !sheetExists) {
+        alert("⚠️ The sheet you were viewing has been deleted or renamed.");
+        currentSheet = Object.keys(data)[0]; // Switch to the first available sheet
+    } else if (currentSheet === "") {
+        currentSheet = Object.keys(data)[0];
+    }
+    
+    renderTabs();
+    if (currentView === 'table') {
+        renderTable(currentSheet);
+    } else {
+        renderCards(currentSheet, false);
+    }
+}, (error) => {
+    console.error(error);
+});
+
+        // Fetch dropdown options
+        onValue(ref(db, 'dropdowns'), (snapshot) => {
+            const data = snapshot.val();
+            if (data) {
+                dropdownOptions = data;
+                const summary = Object.keys(dropdownOptions).map(sheet => {
+                    const cellCount = Object.keys(dropdownOptions[sheet] || {}).length;
+                    return `${sheet} (${cellCount} cells)`;
+                }).join(' | ');
+                console.log('✅ Dropdowns loaded:', summary);
+                
+                // FORCE FULL RE-RENDER by clearing the table body first
+                if (currentSheet) {
+                    if (currentView === 'table') {
+                        document.getElementById('tableBody').innerHTML = ''; // Clear to force full render
+                        renderTable(currentSheet);
+                    } else {
+                        document.getElementById('cardContainer').innerHTML = ''; // Clear to force full render
+                        renderCards(currentSheet, true);
+                    }
+                }
+            }
+        });
+
+        // 2. Presence System (Who is editing)
+        onValue(ref(db, 'presence'), (snapshot) => {
+            const users = snapshot.val() || {};
+            document.querySelectorAll('.being-edited').forEach(el => {
+                el.classList.remove('being-edited');
+                el.removeAttribute('title');
+            });
+            
+            Object.keys(users).forEach(userId => {
+                if (userId === myUid) return; 
+                const u = users[userId];
+                
+                if (u.sheet === currentSheet) {
+                    // Check both table view and card view
+                    const tableCell = document.getElementById(`cell-${u.row}-${u.col}`);
+                    const cardCell = document.getElementById(`card-cell-${u.row}-${u.col}`);
+                    
+                    if (tableCell) {
+                        tableCell.classList.add('being-edited');
+                        tableCell.title = `${u.name} is editing...`; 
+                    }
+                    if (cardCell) {
+                        cardCell.classList.add('being-edited');
+                        cardCell.title = `${u.name} is editing...`; 
+                    }
+                }
+            });
+        });
+    }
+
+    function renderTabs() {
+        const tabContainer = document.getElementById('sheetTabs');
+        let html = "";
+        Object.keys(allData).forEach(sheetName => {
+            const isActive = (sheetName === currentSheet) ? 'active' : '';
+            html += `<li class="nav-item">
+                <a class="nav-link ${isActive}" onclick="switchTab('${sheetName}')">${sheetName}</a>
+            </li>`;
+        });
+        tabContainer.innerHTML = html;
+        document.getElementById('sheetNameDisplay').innerText = currentSheet;
+    }
+
+    window.switchTab = (sheetName) => {
+        currentSheet = sheetName;
+        
+        // Clear filters and dropdown population flags for new sheet
+        const filterWard = document.getElementById('filterWard');
+        const filterStaff = document.getElementById('filterStaff');
+        const filterStatus = document.getElementById('filterStatus');
+        const sortBy = document.getElementById('sortBy');
+        
+        if (filterWard) {
+            filterWard.value = '';
+            filterWard.hasOptions = false;
+        }
+        if (filterStaff) {
+            filterStaff.value = '';
+            filterStaff.hasOptions = false;
+        }
+        if (filterStatus) filterStatus.value = '';
+        if (sortBy) sortBy.value = '';
+        
+        renderTabs();
+        if (currentView === 'table') {
+            renderTable(sheetName);
+        } else {
+            renderCards(sheetName, true);
+        }
+    };
+
+    window.switchView = (view) => {
+        currentView = view;
+        
+        // Update button states
+        document.getElementById('btnTableView').classList.toggle('active', view === 'table');
+        document.getElementById('btnCardView').classList.toggle('active', view === 'card');
+        
+        // Toggle view containers
+        document.querySelector('.table-responsive').style.display = view === 'table' ? 'block' : 'none';
+        document.getElementById('cardView').classList.toggle('active', view === 'card');
+        
+        // Render the appropriate view
+        if (view === 'table') {
+            renderTable(currentSheet);
+        } else {
+            renderCards(currentSheet, true); // Force full render with filters
+        }
+    };
+
+    // Helper function to create input or dropdown based on cell data validation
+    function createCellInput(r, c, value, idPrefix = 'cell', inputType = 'text') {
+        const sheetDropdowns = dropdownOptions[currentSheet] || {};
+        // Check if this specific cell has dropdown options
+        const cellKey = `${r}_${c}`;
+        const options = sheetDropdowns[cellKey];
+        
+        // Escape HTML special characters in value
+        const escapeHtml = (str) => {
+            const div = document.createElement('div');
+            div.textContent = str;
+            return div.innerHTML;
+        };
+        const safeValue = escapeHtml(String(value || ''));
+        
+        if (options && options.length > 0) {
+            // Create dropdown
+            let html = `<select 
+                id="${idPrefix}-${r}-${c}" 
+                class="cell-input" 
+                onfocus="setFocus(${r}, ${c})" 
+                onblur="removeFocus(${r}, ${c})"
+                onchange="updateData(${r}, ${c}, this.value)">`;
+            html += `<option value="">${value === '' ? '-- เลือก --' : ''}</option>`;
+            options.forEach(opt => {
+                const safeOpt = escapeHtml(String(opt));
+                const selected = opt === value ? 'selected' : '';
+                html += `<option value="${safeOpt}" ${selected}>${safeOpt}</option>`;
+            });
+            html += `</select>`;
+            return html;
+        } else {
+            // Create regular input or date input
+            return `<input 
+                type="${inputType}"
+                id="${idPrefix}-${r}-${c}" 
+                class="cell-input" 
+                value="${safeValue}" 
+                onfocus="setFocus(${r}, ${c})" 
+                onblur="removeFocus(${r}, ${c})"
+                onchange="updateData(${r}, ${c}, this.value)">`;
+        }
+    }
+
+function renderTable(sheetName) {
+        if (!allData[sheetName]) return;
+        let rawData = allData[sheetName];
+        const tableHead = document.getElementById('tableHead');
+        const tableBody = document.getElementById('tableBody');
+
+        // Convert Firebase object structure to proper 2D array
+        const data = [];
+        const rowIndices = Object.keys(rawData).map(Number).filter(n => !isNaN(n));
+        const maxRowIndex = rowIndices.length > 0 ? Math.max(...rowIndices) : 0;
+        
+        // Determine number of columns from header row
+        let numCols = 20; // default
+        if (rawData[0]) {
+            const headerRow = rawData[0];
+            if (typeof headerRow === 'object' && !Array.isArray(headerRow)) {
+                const colIndices = Object.keys(headerRow).map(Number).filter(n => !isNaN(n));
+                numCols = colIndices.length > 0 ? Math.max(...colIndices) + 1 : 20;
+            } else if (Array.isArray(headerRow)) {
+                numCols = headerRow.length;
+            }
+        }
+        
+        for (let i = 0; i <= maxRowIndex; i++) {
+            if (rawData[i]) {
+                const row = rawData[i];
+                // Convert row to array if it's an object
+                if (typeof row === 'object' && !Array.isArray(row)) {
+                    const colKeys = Object.keys(row).map(Number).filter(n => !isNaN(n));
+                    const maxColIndex = colKeys.length > 0 ? Math.max(...colKeys) : numCols - 1;
+                    data[i] = [];
+                    for (let j = 0; j <= Math.max(maxColIndex, numCols - 1); j++) {
+                        data[i][j] = row[j] !== undefined && row[j] !== null ? row[j] : '';
+                    }
+                } else if (Array.isArray(row)) {
+                    data[i] = row;
+                } else {
+                    // Handle completely empty row stored as null or undefined
+                    data[i] = Array(numCols).fill('');
+                }
+            } else {
+                // Row doesn't exist in Firebase - create empty row
+                data[i] = Array(numCols).fill('');
+            }
+        }
+
+        // 1. Render Header
+        let headHtml = "<tr>";
+        (data[0] || []).forEach(h => headHtml += `<th>${h}</th>`);
+        headHtml += "</tr>";
+        tableHead.innerHTML = headHtml;
+
+        // 2. Render Body (Smart Update)
+        const currentRowsCount = tableBody.querySelectorAll('tr').length;
+        const expectedRowsCount = data.length - 1; // Exclude header row
+        const numColumns = data[0] ? data[0].length : 0;
+
+        // If the table is completely empty, build it from scratch
+        if (currentRowsCount === 0 || currentRowsCount !== expectedRowsCount) {
+            let bodyHtml = "";
+            data.forEach((row, r) => {
+                if (r === 0) return; 
+                bodyHtml += "<tr>";
+                // Always create the same number of cells as columns in header
+                for (let c = 0; c < numColumns; c++) {
+                    const cell = row[c] || '';
+                    bodyHtml += `<td class="p-0">${createCellInput(r, c, cell, 'cell')}</td>`;
+                }
+                bodyHtml += "</tr>";
+            });
+            tableBody.innerHTML = bodyHtml;
+        } else {
+            // If the table already exists, just update the data inside the boxes!
+            data.forEach((row, r) => {
+                if (r === 0) return;
+                for (let c = 0; c < numColumns; c++) {
+                    const element = document.getElementById(`cell-${r}-${c}`);
+                    if (element) {
+                        // CRITICAL: Update the box ONLY if the user isn't currently typing in it
+                        if (document.activeElement !== element) {
+                            element.value = row[c] || '';
+                        }
+                    }
+                }
+            });
+        }
+    }
+
+function renderCards(sheetName, forceFullRender = false) {
+        if (!allData[sheetName]) return;
+        let rawData = allData[sheetName];
+
+        // Convert Firebase object structure to proper 2D array (same as renderTable)
+        const data = [];
+        const rowIndices = Object.keys(rawData).map(Number).filter(n => !isNaN(n));
+        const maxRowIndex = rowIndices.length > 0 ? Math.max(...rowIndices) : 0;
+        
+        let numCols = 20;
+        if (rawData[0]) {
+            const headerRow = rawData[0];
+            if (typeof headerRow === 'object' && !Array.isArray(headerRow)) {
+                const colIndices = Object.keys(headerRow).map(Number).filter(n => !isNaN(n));
+                numCols = colIndices.length > 0 ? Math.max(...colIndices) + 1 : 20;
+            } else if (Array.isArray(headerRow)) {
+                numCols = headerRow.length;
+            }
+        }
+        
+        for (let i = 0; i <= maxRowIndex; i++) {
+            if (rawData[i]) {
+                const row = rawData[i];
+                if (typeof row === 'object' && !Array.isArray(row)) {
+                    const colKeys = Object.keys(row).map(Number).filter(n => !isNaN(n));
+                    const maxColIndex = colKeys.length > 0 ? Math.max(...colKeys) : numCols - 1;
+                    data[i] = [];
+                    for (let j = 0; j <= Math.max(maxColIndex, numCols - 1); j++) {
+                        data[i][j] = row[j] !== undefined && row[j] !== null ? row[j] : '';
+                    }
+                } else if (Array.isArray(row)) {
+                    data[i] = row;
+                } else {
+                    data[i] = Array(numCols).fill('');
+                }
+            } else {
+                data[i] = Array(numCols).fill('');
+            }
+        }
+
+        const headers = data[0] || [];
+        
+        // Find column indices
+        const colMap = {};
+        headers.forEach((h, idx) => {
+            const headerLower = String(h).toLowerCase();
+            if (headerLower.includes('คนรับ')) colMap.staff = idx;
+            else if (headerLower.includes('status')) colMap.status = idx;
+            else if (headerLower.includes('วอร์ด') || headerLower.includes('ward')) colMap.ward = idx;
+            else if (headerLower.includes('เตียง') || headerLower.includes('bed')) colMap.bed = idx;
+            else if (headerLower.includes('hn')) colMap.hn = idx;
+            else if (headerLower.includes('ชื่อ') || headerLower.includes('name')) colMap.name = idx;
+            else if (headerLower.includes('อายุ') || headerLower.includes('age')) colMap.age = idx;
+            else if (headerLower.includes('dx') || headerLower.includes('diagnosis')) colMap.dx = idx;
+            else if (headerLower.includes('admit')) colMap.admit = idx;
+            else if (headerLower.includes('operation') && !headerLower.includes('post')) colMap.operation = idx;
+            else if (headerLower.includes('อาจารย์') || headerLower.includes('teacher')) colMap.teacher = idx;
+        });
+        
+        // Store globally for filter/sort functions
+        cardColumnMap = colMap;
+        unfilteredCardData = data;
+        
+        // Debug column mapping
+        console.log('Card view column mapping:', colMap);
+        console.log('Headers:', headers);
+        
+        // Helper to create field
+        const createField = (r, c, label, isImportant = false, isDate = false) => {
+            if (!data[r]) return '';
+            
+            const value = data[r][c] || '';
+            const importantClass = isImportant ? 'important' : '';
+            
+            // Set default date to today if date field is empty
+            let displayValue = value;
+            if (isDate && !value) {
+                displayValue = new Date().toISOString().split('T')[0];
+            }
+            
+            const inputType = isDate ? 'date' : 'text';
+            const input = createCellInput(r, c, displayValue, 'card-cell', inputType);
+            
+            return `<div class="card-field ${importantClass}">
+                <label>${label}</label>
+                ${input}
+            </div>`;
+        };
+        
+        // Populate filter dropdowns ONLY if not yet populated (don't reset user's selection!)
+        if (!document.getElementById('filterWard').hasOptions) {
+            populateFilterDropdowns(data, colMap);
+        }
+        
+        // Apply current filters and sorting
+        const filterResult = applyCurrentFilters(data, colMap);
+        const filteredRows = filterResult.filteredRows;
+        
+        // Check if cards already exist
+        const cardContainer = document.getElementById('cardContainer');
+        const existingCards = cardContainer.querySelectorAll('.patient-card').length;
+        const hasExistingCards = existingCards > 0 && !forceFullRender;
+
+        if (hasExistingCards) {
+            // Smart update: just update the values (only works when not filtering)
+            data.forEach((row, r) => {
+                if (r === 0) return;
+                if (!row) return;
+                row.forEach((cell, c) => {
+                    const element = document.getElementById(`card-cell-${r}-${c}`);
+                    if (element && document.activeElement !== element) {
+                        element.value = cell || '';
+                    }
+                });
+            });
+        } else {
+            // Full render with compact format
+            let html = "";
+
+            // Render each filtered row as a compact card
+            filteredRows.forEach(({row, originalIndex}) => {
+                const r = originalIndex; // Use original index for input field IDs
+                
+                // Determine card class based on status
+                const status = row[colMap.status] ? String(row[colMap.status]).toLowerCase() : '';
+                let cardClass = 'patient-card';
+                if (status.includes('d/c') || status.includes('discharge')) cardClass += ' status-discharge';
+                else if (status.includes('critical') || status.includes('icu')) cardClass += ' status-critical';
+                else if (status.includes('pending') || status.includes('wait')) cardClass += ' status-pending';
+                else cardClass += ' status-active';
+                
+                html += `<div class="${cardClass}">`;
+                
+                // Line 1: Staff (Badge) + Status (Badge)
+                html += `<div class="card-compact-line first-line">`;
+                if (colMap.staff !== undefined) {
+                    const staffName = row[colMap.staff] || '';
+                    const staffColor = getStaffColor(staffName);
+                    const staffInput = createCellInput(r, colMap.staff, staffName, 'card-cell');
+                    html += `<span class="badge-staff" style="background: ${staffColor};">${staffInput}</span>`;
+                }
+                if (colMap.status !== undefined) {
+                    const statusVal = row[colMap.status] || '';
+                    const statusLower = statusVal.toLowerCase();
+                    let badgeClass = 'badge-status default';
+                    if (statusLower.includes('d/c') || statusLower.includes('discharge')) badgeClass = 'badge-status discharge';
+                    else if (statusLower) badgeClass = 'badge-status active';
+                    const statusInput = createCellInput(r, colMap.status, statusVal, 'card-cell');
+                    html += `<span class="${badgeClass}">${statusInput}</span>`;
+                }
+                html += `</div>`;
+                
+                // Line 2: Ward/Bed PatientName HN (with colored background)
+                html += `<div class="card-compact-line location-line">`;
+                if (colMap.ward !== undefined && colMap.bed !== undefined) {
+                    html += `<span class="location-badge">`;
+                    html += `<span style="font-size: 1.1em;">📍</span>`;
+                    html += `<span class="card-inline-field narrow">${createCellInput(r, colMap.ward, row[colMap.ward] || '', 'card-cell')}</span>`;
+                    html += `<span class="location-divider">/</span>`;
+                    const bedInput = createCellInput(r, colMap.bed, row[colMap.bed] || '', 'card-cell');
+                    html += `<span class="bed-number card-inline-field narrow">${bedInput}</span>`;
+                    html += `</span>`;
+                }
+                if (colMap.name !== undefined) {
+                    html += `<span class="card-inline-field wide">${createCellInput(r, colMap.name, row[colMap.name] || '', 'card-cell')}</span>`;
+                }
+                if (colMap.hn !== undefined) {
+                    html += `<span class="info-label">HN</span>`;
+                    html += `<span class="card-inline-field">${createCellInput(r, colMap.hn, row[colMap.hn] || '', 'card-cell')}</span>`;
+                }
+                html += `</div>`;
+                
+                // Line 3: Diagnosis (with colored background and icon)
+                if (colMap.dx !== undefined && row[colMap.dx]) {
+                    html += `<div class="card-compact-line diagnosis-line">`;
+                    html += `<span class="diagnosis-tag">🩺</span>`;
+                    html += `<span class="card-inline-field diagnosis-field">${createCellInput(r, colMap.dx, row[colMap.dx], 'card-cell')}</span>`;
+                    html += `</div>`;
+                }
+                
+                // Line 4: Operation (if exists, with colored background)
+                if (colMap.operation !== undefined && row[colMap.operation]) {
+                    html += `<div class="card-compact-line diagnosis-line">`;
+                    html += `<span class="diagnosis-tag">⚕️</span>`;
+                    html += `<span class="card-inline-field diagnosis-field">${createCellInput(r, colMap.operation, row[colMap.operation], 'card-cell')}</span>`;
+                    html += `</div>`;
+                }
+                
+                // Last line: Admit date and other key fields
+                html += `<div class="card-compact-line admit-line">`;
+                if (colMap.admit !== undefined) {
+                    const admitValue = row[colMap.admit] || new Date().toISOString().split('T')[0];
+                    html += `<span class="info-label">📅 Admit</span>`;
+                    html += `<span class="card-inline-field">${createCellInput(r, colMap.admit, admitValue, 'card-cell', 'date')}</span>`;
+                }
+                if (colMap.teacher !== undefined && row[colMap.teacher]) {
+                    html += `<span style="color: #bdc3c7; margin: 0 6px;">•</span>`;
+                    html += `<span class="info-label">👨‍⚕️</span>`;
+                    html += `<span class="card-inline-field">${createCellInput(r, colMap.teacher, row[colMap.teacher], 'card-cell')}</span>`;
+                }
+                if (colMap.age !== undefined && row[colMap.age]) {
+                    html += `<span style="color: #bdc3c7; margin: 0 6px;">•</span>`;
+                    html += `<span class="info-label">Age</span>`;
+                    html += `<span class="card-inline-field narrow">${createCellInput(r, colMap.age, row[colMap.age], 'card-cell')}</span>`;
+                }
+                html += `</div>`;
+                
+                html += `</div>`; // Close patient-card
+            });
+
+            cardContainer.innerHTML = html || '<p class="text-center text-muted p-5">ไม่มีข้อมูลที่จะแสดง</p>';
+            
+            // Update results count
+            const totalCount = data.filter((row, idx) => {
+                if (idx === 0) return false;
+                return row && row.some(cell => cell && cell !== '');
+            }).length;
+            updateResultsCount(filteredRows.length, totalCount);
+        }
+    }
+    
+    // Populate filter dropdowns with unique values from data
+    function populateFilterDropdowns(data, colMap) {
+        const wards = new Set();
+        const staff = new Set();
+        
+        console.log('Populating dropdowns with colMap:', colMap);
+        
+        data.forEach((row, idx) => {
+            if (idx === 0) return; // Skip header
+            
+            if (colMap.ward !== undefined && row[colMap.ward]) {
+                wards.add(String(row[colMap.ward]).trim());
+            }
+            if (colMap.staff !== undefined && row[colMap.staff]) {
+                const staffValue = String(row[colMap.staff]).trim();
+                staff.add(staffValue);
+                console.log(`Row ${idx}: staff value = "${staffValue}"`);
+            }
+        });
+        
+        console.log('Unique staff values:', Array.from(staff));
+        
+        // Populate ward dropdown
+        const filterWard = document.getElementById('filterWard');
+        filterWard.innerHTML = '<option value="">-- ทั้งหมด --</option>';
+        Array.from(wards).sort().forEach(w => {
+            filterWard.innerHTML += `<option value="${w}">${w}</option>`;
+        });
+        filterWard.hasOptions = true;
+        
+        // Populate staff dropdown
+        const filterStaff = document.getElementById('filterStaff');
+        filterStaff.innerHTML = '<option value="">-- ทั้งหมด --</option>';
+        Array.from(staff).sort().forEach(s => {
+            filterStaff.innerHTML += `<option value="${s}">${s}</option>`;
+        });
+        filterStaff.hasOptions = true;
+        
+        console.log('Staff dropdown populated with:', filterStaff.options.length, 'options');
+        for (let i = 0; i < filterStaff.options.length; i++) {
+            console.log(`  Option ${i}: value="${filterStaff.options[i].value}" text="${filterStaff.options[i].text}"`);
+        }
+    }
+    
+    // Apply current filter and sort settings  
+    function applyCurrentFilters(data, colMap) {
+        const filterWardEl = document.getElementById('filterWard');
+        const filterStaffEl = document.getElementById('filterStaff');
+        const filterStatusEl = document.getElementById('filterStatus');
+        const sortByEl = document.getElementById('sortBy');
+        
+        if (!filterStaffEl) {
+            console.error('❌ filterStaff element not found!');
+            return {header: data[0], filteredRows: []};
+        }
+        
+        const filterWard = filterWardEl ? filterWardEl.value : '';
+        const filterStaff = filterStaffEl.value;
+        const filterStatus = filterStatusEl ? filterStatusEl.value : '';
+        const sortBy = sortByEl ? sortByEl.value : '';
+        
+        console.log('=== FILTER APPLIED ===');
+        console.log('Filter values:', {filterWard, filterStaff, filterStatus, sortBy});
+        console.log('Column map:', colMap);
+        console.log('Staff column index:', colMap.staff);
+        
+        // Start with header
+        const header = data[0];
+        
+        // Filter data rows (skip header)
+        let filteredRows = [];
+        for (let idx = 1; idx < data.length; idx++) {
+            const row = data[idx];
+            
+            // Skip completely empty rows
+            if (!row || !row.some(cell => cell && cell !== '')) continue;
+            
+            let passesFilter = true;
+            
+            // Apply ward filter
+            if (filterWard) {
+                const val = colMap.ward !== undefined ? String(row[colMap.ward] || '').trim() : '';
+                if (val !== filterWard) passesFilter = false;
+            }
+            
+            // Apply staff filter
+            if (filterStaff && passesFilter) {
+                const val = colMap.staff !== undefined ? String(row[colMap.staff] || '').trim() : '';
+                const matches = val === filterStaff;
+                if (idx <= 5) { // Log first 5 rows for debugging
+                    console.log(`Row ${idx}: staff="${val}" vs filter="${filterStaff}" (match: ${matches})`);
+                }
+                if (!matches) passesFilter = false;
+            }
+            
+            // Apply status filter
+            if (filterStatus && passesFilter) {
+                const val = colMap.status !== undefined ? String(row[colMap.status] || '').toLowerCase().trim() : '';
+                if (!val.includes(filterStatus.toLowerCase())) passesFilter = false;
+            }
+            
+            // If row passes all filters, add it
+            if (passesFilter) {
+                filteredRows.push({row, originalIndex: idx});
+            }
+        }
+        
+        // Apply sorting
+        if (sortBy && colMap.bed !== undefined) {
+            filteredRows.sort((a, b) => {
+                const aVal = a.row[colMap.bed] || '';
+                const bVal = b.row[colMap.bed] || '';
+                
+                // Try to parse as numbers
+                const aNum = parseFloat(aVal);
+                const bNum = parseFloat(bVal);
+                
+                // Handle non-numeric values
+                if (isNaN(aNum) && isNaN(bNum)) return 0;
+                if (isNaN(aNum)) return 1;
+                if (isNaN(bNum)) return -1;
+                
+                if (sortBy === 'bed-asc') {
+                    return aNum - bNum;
+                } else if (sortBy === 'bed-desc') {
+                    return bNum - aNum;
+                }
+                return 0;
+            });
+        }
+        
+        console.log(`Filtered ${filteredRows.length} rows from ${data.length - 1} total`);
+        
+        if (filterStaff && filteredRows.length === 0) {
+            console.warn('⚠️ Staff filter returned 0 results! Check if staff values match exactly.');
+        }
+        
+        // Return array with header and filtered rows (maintaining original indices)
+        return {header, filteredRows};
+    }
+    
+    // Update results count display
+    function updateResultsCount(shown, total) {
+        const resultsCount = document.getElementById('resultsCount');
+        if (shown === total) {
+            resultsCount.textContent = `แสดง ${total} รายการ`;
+        } else {
+            resultsCount.textContent = `แสดง ${shown} จาก ${total} รายการ`;
+        }
+    }
+    
+    // Apply filters button handler
+    window.applyFilters = () => {
+        console.log('🔍 Apply Filters clicked');
+        console.log('Current view:', currentView, 'Current sheet:', currentSheet);
+        if (currentView === 'card' && currentSheet) {
+            renderCards(currentSheet, true);
+        } else {
+            console.warn('Cannot apply filters: wrong view or no sheet selected');
+        }
+    };
+    
+    // Clear filters button handler
+    window.clearFilters = () => {
+        document.getElementById('filterWard').value = '';
+        document.getElementById('filterStaff').value = '';
+        document.getElementById('filterStatus').value = '';
+        document.getElementById('sortBy').value = '';
+        
+        if (currentView === 'card' && currentSheet) {
+            renderCards(currentSheet, true);
+        }
+    };
+
+// PASTE YOUR WEB APP URL HERE
+const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbztdQvnznmaYhNswYpVvXsFBXEcjR8UiQSGxVGYu9DhHaiZ1zSHUze9zJICiLd93hUHPA/exec";
+
+window.updateData = (r, c, val) => {
+    // 1. Update Firebase
+    update(ref(db, `sheets/${currentSheet}/${r}`), { [c]: val });
+
+    // 2. Send instantly to Google Sheets!
+    fetch(SCRIPT_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'text/plain;charset=utf-8' }, 
+        redirect: 'follow', // <-- ADD THIS LINE!
+        body: JSON.stringify({
+            sheetName: currentSheet,
+            row: r,
+            col: c,
+            val: val
+        })
+    }).catch(err => console.error("Google Sheets update failed", err));
+};
+// 1. Create a variable to remember what cell we are currently in
+    let activeCell = null; 
+
+window.setFocus = (r, c) => {
+        activeCell = { r, c, sheet: currentSheet }; 
+        
+        // 1. Tell Firebase
+        set(ref(db, `presence/${myUid}`), { 
+            sheet: currentSheet, row: r, col: c, name: myName 
+        });
+
+        // 2. Tell Google Sheets (Send the user's unique color!)
+        fetch(SCRIPT_URL, {
+            method: 'POST',
+            headers: { 'Content-Type': 'text/plain;charset=utf-8' }, 
+            redirect: 'follow',
+            body: JSON.stringify({ 
+                action: 'focus', 
+                sheetName: currentSheet, 
+                row: r, 
+                col: c, 
+                name: myName, 
+                color: myColor // <-- ADDED THIS!
+            })
+        }).catch(err => console.error("Sheets focus update failed", err));
+    };
+
+    window.removeFocus = (r, c) => { 
+        activeCell = null; // Forget the cell, we safely clicked away
+        
+        // 1. Tell Firebase to remove the red box
+        set(ref(db, `presence/${myUid}`), null);
+
+        // 2. Tell Google Sheets to remove the Pink color and Note (with retry)
+        const clearIndicator = () => {
+            fetch(SCRIPT_URL, {
+                method: 'POST',
+                headers: { 'Content-Type': 'text/plain;charset=utf-8' }, 
+                redirect: 'follow',
+                body: JSON.stringify({ action: 'blur', sheetName: currentSheet, row: r, col: c })
+            }).catch(err => {
+                console.error("Sheets blur update failed, retrying...", err);
+                // Retry once after a short delay
+                setTimeout(() => {
+                    fetch(SCRIPT_URL, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'text/plain;charset=utf-8' }, 
+                        redirect: 'follow',
+                        body: JSON.stringify({ action: 'blur', sheetName: currentSheet, row: r, col: c })
+                    }).catch(e => console.error("Retry failed", e));
+                }, 500);
+            });
+        };
+        clearIndicator();
+    };
+
+    // 3. Cleanup when user switches tabs or minimizes browser
+    document.addEventListener('visibilitychange', () => {
+        if (document.hidden && activeCell) {
+            // User switched to another tab - clear the indicator
+            fetch(SCRIPT_URL, {
+                method: 'POST',
+                headers: { 'Content-Type': 'text/plain;charset=utf-8' }, 
+                keepalive: true,
+                body: JSON.stringify({ action: 'blur', sheetName: activeCell.sheet, row: activeCell.r, col: activeCell.c })
+            });
+        }
+    });
+
+    // 4. Emergency cleanup if they close the browser tab!
+    window.addEventListener('beforeunload', () => {
+        if (activeCell) {
+            // Instantly remove Firebase presence
+            set(ref(db, `presence/${myUid}`), null);
+            
+            // Send emergency signal to Google Sheets
+            fetch(SCRIPT_URL, {
+                method: 'POST',
+                headers: { 'Content-Type': 'text/plain;charset=utf-8' }, 
+                keepalive: true, // <-- CRITICAL: Forces request to finish while tab closes
+                body: JSON.stringify({ action: 'blur', sheetName: activeCell.sheet, row: activeCell.r, col: activeCell.c })
+            });
+        }
+    });
+</script>
+
+
+</body>
+</html>
