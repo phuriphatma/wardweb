@@ -604,28 +604,28 @@
         </div>
         <div class="modal-body">
             <div class="modal-field">
-                <label>คนรับเคส *</label>
-                <input type="text" id="newStaff" placeholder="ชื่อคนรับเคส" required>
+                <label>คนรับเคส</label>
+                <input type="text" id="newStaff" placeholder="ชื่อคนรับเคส">
             </div>
             <div class="modal-field">
-                <label>Status *</label>
-                <select id="newStatus" required>
+                <label>Status</label>
+                <select id="newStatus">
                     <option value="">-- เลือก --</option>
                     <option value="admit">Admit</option>
                     <option value="discharge">Discharge</option>
                 </select>
             </div>
             <div class="modal-field">
-                <label>วอร์ด *</label>
-                <input type="text" id="newWard" placeholder="เช่น 3ค" required>
+                <label>วอร์ด</label>
+                <input type="text" id="newWard" placeholder="เช่น 3ค">
             </div>
             <div class="modal-field">
-                <label>เตียง *</label>
-                <input type="text" id="newBed" placeholder="เช่น 6" required>
+                <label>เตียง</label>
+                <input type="text" id="newBed" placeholder="เช่น 6">
             </div>
             <div class="modal-field">
-                <label>ชื่อผู้ป่วย *</label>
-                <input type="text" id="newName" placeholder="ชื่อ-นามสกุล" required>
+                <label>ชื่อผู้ป่วย</label>
+                <input type="text" id="newName" placeholder="ชื่อ-นามสกุล">
             </div>
             <div class="modal-field">
                 <label>HN</label>
@@ -1500,12 +1500,7 @@ function renderCards(sheetName, forceFullRender = false) {
         const admit = document.getElementById('newAdmit').value.trim();
         const teacher = document.getElementById('newTeacher').value.trim();
 
-        // Validate required fields
-        if (!staff || !status || !ward || !bed || !name) {
-            alert('กรุณากรอกข้อมูลที่จำเป็น: คนรับเคส, Status, วอร์ด, เตียง, ชื่อผู้ป่วย');
-            return;
-        }
-
+        // Check if sheet is selected
         if (!currentSheet) {
             alert('กรุณาเลือก Sheet ก่อน');
             return;
