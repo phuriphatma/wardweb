@@ -132,6 +132,44 @@
             margin-left: 5px;
         }
         
+        .save-status {
+            position: fixed;
+            top: 15px;
+            right: 20px;
+            z-index: 9999;
+            display: inline-flex;
+            align-items: center;
+            padding: 8px 16px;
+            border-radius: 8px;
+            font-size: 0.9em;
+            font-weight: 600;
+            transition: all 0.3s ease;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+        }
+        .save-status.saving {
+            background: #fff3cd;
+            color: #856404;
+            border: 1px solid #ffc107;
+        }
+        .save-status.saved {
+            background: #d4edda;
+            color: #155724;
+            border: 1px solid #28a745;
+        }
+        .save-status .spinner {
+            display: inline-block;
+            width: 12px;
+            height: 12px;
+            border: 2px solid #856404;
+            border-top-color: transparent;
+            border-radius: 50%;
+            animation: spin 0.8s linear infinite;
+            margin-right: 6px;
+        }
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+        
         .modal-overlay {
             display: none;
             position: fixed;
@@ -713,6 +751,8 @@
     </style>
 </head>
 <body>
+<!-- Save Status Indicator (fixed at top right) -->
+<div class="save-status" id="saveStatus" style="display: none;"></div>
 
 <div id="loginOverlay">
     <div class="card p-4 shadow text-center" style="width:350px;">
@@ -789,7 +829,6 @@
                 </div>
             </div>
             <div class="filter-actions">
-                <button class="btn-apply-filter" onclick="applyFilters()">✓ กรอง</button>
                 <button class="btn-clear-filter" onclick="clearFilters()">✕ ล้างตัวกรอง</button>
                 <button class="btn-add-patient" onclick="openAddPatientModal()">➕ เพิ่มผู้ป่วย</button>
                 <div class="queue-indicator" id="queueIndicator" style="display: inline-block; margin-left: 15px;">
@@ -1078,24 +1117,22 @@
         
         if (staffColIdx === -1) return STAFF_QUEUE[0];
         
-        // Find last row with actual patient data (not just placeholder)
+        // Find last row with ANY staff name (including placeholders)
         let lastStaff = null;
         const rowKeys = Object.keys(sheetData)
             .map(k => parseInt(k))
             .filter(n => !isNaN(n) && n > 0) // Skip header row
             .sort((a, b) => a - b);
         
-        // Search from last row backwards for a row with actual patient data
+        // Search from last row backwards for ANY row with a staff name
         for (let i = rowKeys.length - 1; i >= 0; i--) {
             const rowIdx = rowKeys[i];
             const row = sheetData[rowIdx];
             if (row && Array.isArray(row)) {
                 const staff = String(row[staffColIdx] || '').trim();
-                const bed = bedColIdx >= 0 ? String(row[bedColIdx] || '').trim() : '';
-                const name = nameColIdx >= 0 ? String(row[nameColIdx] || '').trim() : '';
                 
-                // Found a row with staff and at least bed or name (not a placeholder)
-                if (staff && (bed || name)) {
+                // Found a row with staff name (includes both real patients and placeholders)
+                if (staff) {
                     lastStaff = staff;
                     break;
                 }
@@ -1162,65 +1199,77 @@
     
     async function skipQueue() {
         const currentStaff = getNextInQueue();
-        const skippedSlots = getSkippedSlots();
         
-        // Add to skipped slots if not already there
-        if (!skippedSlots.includes(currentStaff)) {
-            
-            // Create placeholder row in sheet
-            if (currentSheet && allData[currentSheet]) {
-                try {
-                    const sheetData = allData[currentSheet];
-                    
-                    // Find last continuous row
-                    const rowKeys = Object.keys(sheetData).map(k => parseInt(k)).filter(n => !isNaN(n)).sort((a, b) => a - b);
-                    let lastContinuousRow = 0;
-                    for (let i = 0; i < rowKeys.length; i++) {
-                        if (rowKeys[i] === i) {
-                            lastContinuousRow = i;
-                        } else {
-                            break;
-                        }
+        // Create placeholder row in sheet
+        if (currentSheet && allData[currentSheet]) {
+            try {
+                const sheetData = allData[currentSheet];
+                
+                // Find last continuous row
+                const rowKeys = Object.keys(sheetData).map(k => parseInt(k)).filter(n => !isNaN(n)).sort((a, b) => a - b);
+                let lastContinuousRow = 0;
+                for (let i = 0; i < rowKeys.length; i++) {
+                    if (rowKeys[i] === i) {
+                        lastContinuousRow = i;
+                    } else {
+                        break;
                     }
-                    const newRowIndex = lastContinuousRow + 1;
-                    
-                    // Get headers and create placeholder row
-                    const headers = sheetData[0] || [];
-                    const placeholderRow = new Array(headers.length).fill('');
-                    
-                    // Fill in only the staff name
-                    headers.forEach((header, colIdx) => {
-                        const headerLower = String(header).toLowerCase();
-                        if (headerLower.includes('คนรับ')) {
-                            placeholderRow[colIdx] = currentStaff;
-                        }
-                    });
-                    
-                    // Add to Firebase
-                    await set(ref(db, `sheets/${currentSheet}/${newRowIndex}`), placeholderRow);
-                    console.log('✅ Placeholder row created for:', currentStaff);
-                    
-                    // Sync to Google Sheets
-                    fetch(SCRIPT_URL, {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-                        redirect: 'follow',
-                        body: JSON.stringify({
-                            action: 'addRow',
-                            sheetName: currentSheet,
-                            rowIndex: newRowIndex,
-                            rowData: placeholderRow
-                        })
-                    }).catch(error => console.error('Error syncing placeholder:', error));
-                    
-                } catch (error) {
-                    console.error('Error creating placeholder:', error);
                 }
+                const newRowIndex = lastContinuousRow + 1;
+                
+                // Get headers and create placeholder row
+                const headers = sheetData[0] || [];
+                const placeholderRow = new Array(headers.length).fill('');
+                
+                // Fill in only the staff name
+                headers.forEach((header, colIdx) => {
+                    const headerLower = String(header).toLowerCase();
+                    if (headerLower.includes('คนรับ')) {
+                        placeholderRow[colIdx] = currentStaff;
+                    }
+                });
+                
+                // Add to Firebase
+                await set(ref(db, `sheets/${currentSheet}/${newRowIndex}`), placeholderRow);
+                console.log('✅ Placeholder row created for:', currentStaff);
+                
+                // Update local data immediately so queue calculation sees the new row
+                if (!allData[currentSheet]) {
+                    allData[currentSheet] = {};
+                }
+                allData[currentSheet][newRowIndex] = placeholderRow;
+                
+                // Sync to Google Sheets
+                showSaving();
+                fetch(SCRIPT_URL, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+                    redirect: 'follow',
+                    body: JSON.stringify({
+                        action: 'addRow',
+                        sheetName: currentSheet,
+                        rowIndex: newRowIndex,
+                        rowData: placeholderRow
+                    })
+                }).then(() => showSaved()).catch(error => {
+                    console.error('Error syncing placeholder:', error);
+                    showSaved();
+                });
+                
+            } catch (error) {
+                console.error('Error creating placeholder:', error);
             }
         }
         
         // Update display (queue will auto-calculate from new data)
         updateQueueDisplay();
+        
+        // Refresh current view to show placeholder immediately
+        if (currentView === 'card') {
+            renderCards(currentSheet, true);
+        } else {
+            renderTable(currentSheet);
+        }
     }
     
     function fillSkippedSlot(staffName) {
@@ -1288,6 +1337,41 @@
     window.skipQueue = skipQueue;
     window.fillSkippedSlot = fillSkippedSlot;
     // ===== END QUEUE MANAGEMENT =====
+    
+    // ===== SAVE STATUS INDICATOR =====
+    let saveStatusTimeout = null;
+    
+    function showSaving() {
+        const statusEl = document.getElementById('saveStatus');
+        if (statusEl) {
+            statusEl.className = 'save-status saving';
+            statusEl.innerHTML = '<span class="spinner"></span>กำลังบันทึก...';
+            statusEl.style.display = 'inline-flex';
+            
+            // Clear any pending timeout
+            if (saveStatusTimeout) {
+                clearTimeout(saveStatusTimeout);
+            }
+        }
+    }
+    
+    function showSaved() {
+        const statusEl = document.getElementById('saveStatus');
+        if (statusEl) {
+            statusEl.className = 'save-status saved';
+            statusEl.innerHTML = '✓ บันทึกแล้ว';
+            statusEl.style.display = 'inline-flex';
+            
+            // Auto-hide after 2 seconds
+            saveStatusTimeout = setTimeout(() => {
+                statusEl.style.display = 'none';
+            }, 2000);
+        }
+    }
+    
+    window.showSaving = showSaving;
+    window.showSaved = showSaved;
+    // ===== END SAVE STATUS =====
     
     // --- LOGIN LOGIC ---
     const overlay = document.getElementById('loginOverlay');
@@ -1384,6 +1468,9 @@ onValue(ref(db, 'sheets'), (snapshot) => {
     } else {
         renderCards(currentSheet, false);
     }
+    
+    // Update queue display after data loads
+    updateQueueDisplay();
 }, (error) => {
     console.error(error);
 });
@@ -2170,6 +2257,7 @@ function renderCards(sheetName, forceFullRender = false) {
             console.log('✅ Row deleted from Firebase:', rowIndex);
 
             // 2. Send delete request to Google Sheets in background
+            showSaving();
             fetch(SCRIPT_URL, {
                 method: 'POST',
                 headers: { 'Content-Type': 'text/plain;charset=utf-8' },
@@ -2182,11 +2270,14 @@ function renderCards(sheetName, forceFullRender = false) {
             }).then(response => {
                 if (response.ok) {
                     console.log('✅ Row deleted from Google Sheets');
+                    showSaved();
                 } else {
                     console.error('Failed to delete from Google Sheets');
+                    showSaved();
                 }
             }).catch(error => {
                 console.error('Google Sheets delete error:', error);
+                showSaved();
             });
 
             // 3. Refresh view immediately
@@ -2377,6 +2468,7 @@ function renderCards(sheetName, forceFullRender = false) {
             }
             
             // 2. Send to Google Sheets in background (don't wait)
+            showSaving();
             fetch(SCRIPT_URL, {
                 method: 'POST',
                 headers: { 'Content-Type': 'text/plain;charset=utf-8' },
@@ -2390,11 +2482,14 @@ function renderCards(sheetName, forceFullRender = false) {
             }).then(response => {
                 if (response.ok) {
                     console.log('✅ Patient synced to Google Sheets');
+                    showSaved();
                 } else {
                     console.error('Failed to sync to Google Sheets');
+                    showSaved();
                 }
             }).catch(error => {
                 console.error('Google Sheets sync error:', error);
+                showSaved();
             });
             
         } catch (error) {
@@ -2526,6 +2621,7 @@ window.updateData = (r, c, val) => {
     update(ref(db, `sheets/${currentSheet}/${r}`), { [c]: val });
 
     // 2. Send instantly to Google Sheets!
+    showSaving();
     fetch(SCRIPT_URL, {
         method: 'POST',
         headers: { 'Content-Type': 'text/plain;charset=utf-8' }, 
@@ -2536,7 +2632,10 @@ window.updateData = (r, c, val) => {
             col: c,
             val: val
         })
-    }).catch(err => console.error("Google Sheets update failed", err));
+    }).then(() => showSaved()).catch(err => {
+        console.error("Google Sheets update failed", err);
+        showSaved();
+    });
 };
 // 1. Create a variable to remember what cell we are currently in
     let activeCell = null; 
