@@ -102,6 +102,133 @@
             color: #7f8c8d;
             margin-top: 10px;
         }
+        .btn-add-patient {
+            background: linear-gradient(135deg, #27ae60, #2ecc71);
+            color: white;
+            margin-left: auto;
+        }
+        .btn-add-patient:hover {
+            background: linear-gradient(135deg, #229954, #27ae60);
+            transform: scale(1.05);
+        }
+        .modal-overlay {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.6);
+            z-index: 1000;
+            align-items: center;
+            justify-content: center;
+        }
+        .modal-overlay.show {
+            display: flex;
+        }
+        .modal-content {
+            background: white;
+            border-radius: 12px;
+            padding: 30px;
+            max-width: 600px;
+            width: 90%;
+            max-height: 80vh;
+            overflow-y: auto;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.3);
+        }
+        .modal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+            padding-bottom: 15px;
+            border-bottom: 2px solid #ecf0f1;
+        }
+        .modal-header h2 {
+            margin: 0;
+            color: #2c3e50;
+            font-size: 1.5em;
+        }
+        .btn-close-modal {
+            background: none;
+            border: none;
+            font-size: 2em;
+            color: #95a5a6;
+            cursor: pointer;
+            padding: 0;
+            width: 30px;
+            height: 30px;
+            line-height: 30px;
+            text-align: center;
+        }
+        .btn-close-modal:hover {
+            color: #e74c3c;
+        }
+        .modal-body {
+            display: grid;
+            gap: 15px;
+        }
+        .modal-field {
+            display: flex;
+            flex-direction: column;
+            gap: 5px;
+        }
+        .modal-field label {
+            font-weight: 600;
+            color: #34495e;
+            font-size: 0.9em;
+        }
+        .modal-field input,
+        .modal-field select {
+            padding: 10px;
+            border: 2px solid #ecf0f1;
+            border-radius: 6px;
+            font-size: 1em;
+            transition: border-color 0.3s;
+        }
+        .modal-field input:focus,
+        .modal-field select:focus {
+            outline: none;
+            border-color: #3498db;
+        }
+        .modal-footer {
+            display: flex;
+            gap: 10px;
+            margin-top: 20px;
+            padding-top: 15px;
+            border-top: 2px solid #ecf0f1;
+        }
+        .btn-submit-patient {
+            flex: 1;
+            padding: 12px;
+            border: none;
+            border-radius: 6px;
+            font-weight: 600;
+            cursor: pointer;
+            background: linear-gradient(135deg, #27ae60, #2ecc71);
+            color: white;
+            font-size: 1em;
+            transition: all 0.3s;
+        }
+        .btn-submit-patient:hover {
+            background: linear-gradient(135deg, #229954, #27ae60);
+            transform: translateY(-2px);
+        }
+        .btn-cancel-modal {
+            flex: 1;
+            padding: 12px;
+            border: none;
+            border-radius: 6px;
+            font-weight: 600;
+            cursor: pointer;
+            background: #95a5a6;
+            color: white;
+            font-size: 1em;
+            transition: all 0.3s;
+        }
+        .btn-cancel-modal:hover {
+            background: #7f8c8d;
+        }
         .patient-card { 
             background: linear-gradient(135deg, #ffffff 0%, #f8f9fa 100%);
             border-radius: 10px; 
@@ -458,11 +585,76 @@
             <div class="filter-actions">
                 <button class="btn-apply-filter" onclick="applyFilters()">✓ กรอง</button>
                 <button class="btn-clear-filter" onclick="clearFilters()">✕ ล้างตัวกรอง</button>
+                <button class="btn-add-patient" onclick="openAddPatientModal()">➕ เพิ่มผู้ป่วย</button>
             </div>
             <div class="results-count" id="resultsCount"></div>
         </div>
         <div id="cardContainer">
             <!-- Cards will be rendered here -->
+        </div>
+    </div>
+</div>
+
+<!-- Add Patient Modal -->
+<div id="addPatientModal" class="modal-overlay" onclick="closeAddPatientModalOnOutside(event)">
+    <div class="modal-content" onclick="event.stopPropagation()">
+        <div class="modal-header">
+            <h2>➕ เพิ่มผู้ป่วยใหม่</h2>
+            <button class="btn-close-modal" onclick="closeAddPatientModal()">&times;</button>
+        </div>
+        <div class="modal-body">
+            <div class="modal-field">
+                <label>คนรับเคส *</label>
+                <input type="text" id="newStaff" placeholder="ชื่อคนรับเคส" required>
+            </div>
+            <div class="modal-field">
+                <label>Status *</label>
+                <select id="newStatus" required>
+                    <option value="">-- เลือก --</option>
+                    <option value="admit">Admit</option>
+                    <option value="discharge">Discharge</option>
+                </select>
+            </div>
+            <div class="modal-field">
+                <label>วอร์ด *</label>
+                <input type="text" id="newWard" placeholder="เช่น 3ค" required>
+            </div>
+            <div class="modal-field">
+                <label>เตียง *</label>
+                <input type="text" id="newBed" placeholder="เช่น 6" required>
+            </div>
+            <div class="modal-field">
+                <label>ชื่อผู้ป่วย *</label>
+                <input type="text" id="newName" placeholder="ชื่อ-นามสกุล" required>
+            </div>
+            <div class="modal-field">
+                <label>HN</label>
+                <input type="text" id="newHN" placeholder="Hospital Number">
+            </div>
+            <div class="modal-field">
+                <label>อายุ</label>
+                <input type="text" id="newAge" placeholder="อายุ (ปี)">
+            </div>
+            <div class="modal-field">
+                <label>Diagnosis</label>
+                <input type="text" id="newDx" placeholder="การวินิจฉัยโรค">
+            </div>
+            <div class="modal-field">
+                <label>Operation</label>
+                <input type="text" id="newOperation" placeholder="การผ่าตัด">
+            </div>
+            <div class="modal-field">
+                <label>Admit Date</label>
+                <input type="date" id="newAdmit">
+            </div>
+            <div class="modal-field">
+                <label>อาจารย์</label>
+                <input type="text" id="newTeacher" placeholder="อาจารย์ที่ปรึกษา">
+            </div>
+        </div>
+        <div class="modal-footer">
+            <button class="btn-cancel-modal" onclick="closeAddPatientModal()">ยกเลิก</button>
+            <button class="btn-submit-patient" onclick="submitNewPatient()">✓ บันทึก</button>
         </div>
     </div>
 </div>
@@ -1259,6 +1451,136 @@ function renderCards(sheetName, forceFullRender = false) {
         
         if (currentView === 'card' && currentSheet) {
             renderCards(currentSheet, true);
+        }
+    };
+
+    // Modal functions
+    window.openAddPatientModal = () => {
+        // Set today's date as default
+        const today = new Date().toISOString().split('T')[0];
+        document.getElementById('newAdmit').value = today;
+        
+        // Show modal
+        document.getElementById('addPatientModal').classList.add('show');
+    };
+
+    window.closeAddPatientModal = () => {
+        document.getElementById('addPatientModal').classList.remove('show');
+        // Clear form
+        document.getElementById('newStaff').value = '';
+        document.getElementById('newStatus').value = '';
+        document.getElementById('newWard').value = '';
+        document.getElementById('newBed').value = '';
+        document.getElementById('newName').value = '';
+        document.getElementById('newHN').value = '';
+        document.getElementById('newAge').value = '';
+        document.getElementById('newDx').value = '';
+        document.getElementById('newOperation').value = '';
+        document.getElementById('newAdmit').value = '';
+        document.getElementById('newTeacher').value = '';
+    };
+
+    window.closeAddPatientModalOnOutside = (event) => {
+        if (event.target.id === 'addPatientModal') {
+            closeAddPatientModal();
+        }
+    };
+
+    window.submitNewPatient = async () => {
+        // Get values
+        const staff = document.getElementById('newStaff').value.trim();
+        const status = document.getElementById('newStatus').value.trim();
+        const ward = document.getElementById('newWard').value.trim();
+        const bed = document.getElementById('newBed').value.trim();
+        const name = document.getElementById('newName').value.trim();
+        const hn = document.getElementById('newHN').value.trim();
+        const age = document.getElementById('newAge').value.trim();
+        const dx = document.getElementById('newDx').value.trim();
+        const operation = document.getElementById('newOperation').value.trim();
+        const admit = document.getElementById('newAdmit').value.trim();
+        const teacher = document.getElementById('newTeacher').value.trim();
+
+        // Validate required fields
+        if (!staff || !status || !ward || !bed || !name) {
+            alert('กรุณากรอกข้อมูลที่จำเป็น: คนรับเคส, Status, วอร์ด, เตียง, ชื่อผู้ป่วย');
+            return;
+        }
+
+        if (!currentSheet) {
+            alert('กรุณาเลือก Sheet ก่อน');
+            return;
+        }
+
+        // Get current data to find max row and column mapping
+        const sheetData = allData[currentSheet];
+        if (!sheetData) {
+            alert('ไม่พบข้อมูล Sheet');
+            return;
+        }
+
+        // Find max row index (find the highest numeric key)
+        let maxRow = -1;
+        Object.keys(sheetData).forEach(key => {
+            const rowNum = parseInt(key);
+            if (!isNaN(rowNum) && rowNum > maxRow) {
+                maxRow = rowNum;
+            }
+        });
+        const newRowIndex = maxRow + 1;
+
+        // Get headers to map field names to column indices
+        const headers = sheetData[0] || [];
+        const newRowData = new Array(headers.length).fill('');
+
+        // Map form values to columns based on header names
+        headers.forEach((header, colIdx) => {
+            const headerLower = String(header).toLowerCase();
+            if (headerLower.includes('คนรับ')) newRowData[colIdx] = staff;
+            else if (headerLower.includes('status')) newRowData[colIdx] = status;
+            else if (headerLower.includes('วอร์ด') || headerLower.includes('ward')) newRowData[colIdx] = ward;
+            else if (headerLower.includes('เตียง') || headerLower.includes('bed')) newRowData[colIdx] = bed;
+            else if (headerLower.includes('ชื่อ') || headerLower.includes('name')) newRowData[colIdx] = name;
+            else if (headerLower.includes('hn')) newRowData[colIdx] = hn;
+            else if (headerLower.includes('อายุ') || headerLower.includes('age')) newRowData[colIdx] = age;
+            else if (headerLower.includes('dx') || headerLower.includes('diagnosis')) newRowData[colIdx] = dx;
+            else if (headerLower.includes('operation') && !headerLower.includes('post')) newRowData[colIdx] = operation;
+            else if (headerLower.includes('admit')) newRowData[colIdx] = admit;
+            else if (headerLower.includes('อาจารย์') || headerLower.includes('teacher')) newRowData[colIdx] = teacher;
+        });
+
+        console.log('Adding new patient at row:', newRowIndex);
+        console.log('New row data:', newRowData);
+
+        try {
+            // 1. Update Firebase
+            await set(ref(db, `sheets/${currentSheet}/${newRowIndex}`), newRowData);
+            
+            // 2. Send to Google Sheets
+            const response = await fetch(SCRIPT_URL, {
+                method: 'POST',
+                headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+                redirect: 'follow',
+                body: JSON.stringify({
+                    action: 'addRow',
+                    sheetName: currentSheet,
+                    rowData: newRowData
+                })
+            });
+
+            if (response.ok) {
+                console.log('✅ Patient added successfully');
+                closeAddPatientModal();
+                // Refresh card view
+                if (currentView === 'card') {
+                    renderCards(currentSheet, true);
+                }
+            } else {
+                console.error('Failed to add patient to Google Sheets');
+                alert('เกิดข้อผิดพลาดในการบันทึกข้อมูล');
+            }
+        } catch (error) {
+            console.error('Error adding patient:', error);
+            alert('เกิดข้อผิดพลาดในการบันทึกข้อมูล: ' + error.message);
         }
     };
 
